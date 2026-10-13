@@ -1,0 +1,9 @@
+{
+  "name": "magister",
+  "version": "1.2.0",
+  "type": "module",
+  "scripts": {
+    "test": "node --test magister.test.mjs",
+    "publish": "clawhub publish ../skills/magister --slug magister --name \"magister.net\" --version $npm_package_version"
+  }
+}

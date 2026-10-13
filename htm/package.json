@@ -1,0 +1,10 @@
+{
+  "name": "htm",
+  "version": "1.0.2",
+  "type": "module",
+  "scripts": {
+    "test": "node --test htm.test.mjs",
+    "refresh": "node refresh-regio-catalog.mjs",
+    "publish": "clawhub publish ../skills/htm --slug htm --name \"Mijn HTM\" --version $npm_package_version"
+  }
+}

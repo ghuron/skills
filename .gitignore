@@ -1,0 +1,4 @@
+.*
+!.gitignore
+!.claude-plugin/
+node_modules/

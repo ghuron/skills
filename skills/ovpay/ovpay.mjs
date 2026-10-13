@@ -1,0 +1,302 @@
+#!/usr/bin/env node
+/**
+ * OVpay (ovpay.nl, Dutch public transport) CLI wrapper.
+ *
+ * Reuses the long-lived (~30-day) *offline* token the OVpay mobile app uses, so
+ * you log in once and then read your account with no browser and no email code.
+ *
+ * Credentials / state:
+ *   OVPAY_REFRESH_TOKEN   seed offline refresh token (from `login`, stored in a vault)
+ *   OVPAY_STATE           path for the live token (default ~/.ovpay/tokens.json)
+ *   OVPAY_EMAIL/PASSWORD  only used by `login`
+ *
+ * The offline refresh token ROTATES and the previous one is invalidated on use,
+ * so the newest token is always persisted to OVPAY_STATE. Seed from
+ * OVPAY_REFRESH_TOKEN is used only when no state file exists yet.
+ *
+ * Usage: node ovpay.mjs <command> [args]
+ *   cards                              list cards (name, balance, status, xtat)
+ *   customer                           account profile
+ *   trips <card> [from] [to]           trips (card = name or xtat; dates YYYY-MM-DD, inclusive)
+ *   export <card> <file.csv> [from] [to]   write trips to CSV
+ *   get <path>                         raw GET against https://api.ovpay.app
+ *   secure <card>                      enable SecureTat on a card (one-time email OTP)
+ *   login                              one-time browser login -> prints & stores the offline token
+ */
+import { fileURLToPath } from 'url';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync } from 'fs';
+import { homedir } from 'os';
+import { join, dirname } from 'path';
+import { createInterface } from 'readline';
+
+const IDENTITY = 'https://api.identity.ovpay.app/api/external/v1/Identity';
+const API = 'https://api.ovpay.app';
+const FLOW = 'App';
+const SKEW = 90;
+const MODE = { TRAM: 'Tram', BUS: 'Bus', RAIL: 'Rail', METRO: 'Metro', FERRY: 'Ferry' };
+
+const STATE = process.env.OVPAY_STATE || join(homedir(), '.ovpay', 'tokens.json');
+
+// --------------------------------------------------------------------------- //
+// token storage + refresh
+// --------------------------------------------------------------------------- //
+function loadTokens() {
+  if (existsSync(STATE)) return JSON.parse(readFileSync(STATE, 'utf8'));
+  if (process.env.OVPAY_REFRESH_TOKEN) return { refresh_token: process.env.OVPAY_REFRESH_TOKEN };
+  throw new Error('Not logged in. Run `node ovpay.mjs login`, or set OVPAY_REFRESH_TOKEN.');
+}
+
+function saveTokens(tok) {
+  mkdirSync(dirname(STATE), { recursive: true });
+  writeFileSync(STATE, JSON.stringify(tok, null, 2));
+  try { chmodSync(STATE, 0o600); } catch {}
+}
+
+function jwtExp(token) {
+  try {
+    const p = token.split('.')[1];
+    return JSON.parse(Buffer.from(p, 'base64url').toString()).exp || 0;
+  } catch { return 0; }
+}
+
+export async function refresh(tok = loadTokens()) {
+  const rt = tok.refresh_token;
+  if (!rt) throw new Error('No refresh token. Run `node ovpay.mjs login`.');
+  const r = await fetch(`${IDENTITY}/refresh-token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({ refreshToken: rt, authorizationFlow: FLOW }),
+  });
+  if (r.status !== 200) {
+    throw new Error(`Refresh failed (${r.status}); the offline token expired or was `
+      + `revoked. Run \`node ovpay.mjs login\`.`);
+  }
+  const nw = await r.json();
+  if (!nw.refresh_token) nw.refresh_token = rt;
+  saveTokens(nw);
+  return nw;
+}
+
+let _access = null;
+export async function accessToken(force = false) {
+  if (!force) {
+    const tok = loadTokens();
+    if (tok.access_token && Date.now() / 1000 < jwtExp(tok.access_token) - SKEW) {
+      return tok.access_token;
+    }
+  }
+  return (await refresh())['access_token'];
+}
+
+// --------------------------------------------------------------------------- //
+// HTTP
+// --------------------------------------------------------------------------- //
+export async function api(path, { method = 'GET', secureTat = null, body = null, json = null } = {}) {
+  const url = path.startsWith('http') ? path : API + '/' + path.replace(/^\//, '');
+  const call = async (force) => {
+    const headers = { Authorization: 'Bearer ' + (await accessToken(force)), Accept: 'application/json' };
+    if (secureTat) headers.SecureTatAccessToken = 'Bearer ' + secureTat;
+    if (json != null) { headers['Content-Type'] = 'application/json'; body = JSON.stringify(json); }
+    return fetch(url, { method, headers, body });
+  };
+  let r = await call(false);
+  if (r.status === 401) r = await call(true);
+  return r;
+}
+
+async function apiJson(path, opts) {
+  const r = await api(path, opts);
+  if (r.status >= 400) throw new Error(`${path} -> ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  return r.json();
+}
+
+// --------------------------------------------------------------------------- //
+// SecureTat (per-card step-up for trip history of secured cards)
+// --------------------------------------------------------------------------- //
+async function secureTatToken(xtat) {
+  const r = await api('/api/v1/SecureTat/token/refresh-token', { method: 'POST', json: { xtat } });
+  if (r.status !== 200) {
+    throw new Error(`No SecureTat token for ${xtat} (${r.status}). If this card is not yet `
+      + `secured, run \`node ovpay.mjs secure <card>\` (or secure it in the OVpay app).`);
+  }
+  return (await r.json()).accessToken.token;
+}
+
+// --------------------------------------------------------------------------- //
+// account
+// --------------------------------------------------------------------------- //
+export async function customer() { return apiJson('/api/v1/Customers'); }
+
+export async function cards() {
+  const list = await apiJson('/api/v1/TransitAccounts');
+  return list.map(t => ({
+    name: (t.personalization || {}).name || null,
+    xtat: t.xtat, xbot: t.xbot, medium: t.mediumType, status: t.status,
+    balance: typeof t.balance === 'number' ? t.balance / 100 : null,
+    cardNumber: t.cardNumber || null,
+  }));
+}
+
+async function resolve(card) {
+  if (/^[0-9a-f-]{36}$/i.test(card)) return card;
+  const match = (await cards()).find(c => c.name && c.name.toLowerCase() === card.toLowerCase());
+  if (!match) throw new Error(`No card named ${JSON.stringify(card)}. Use \`cards\` to list names/xtats.`);
+  return match.xtat;
+}
+
+function toTrip(t) {
+  const ci = t.checkInTimestamp || '', co = t.checkOutTimestamp || '';
+  return {
+    date: ci.slice(0, 10),
+    departureTime: ci.slice(11, 16), departure: t.checkInLocation || '',
+    arrivalTime: co.slice(11, 16), arrival: t.checkOutLocation || '',
+    mode: MODE[t.transport] || (t.transport || ''), operator: t.organisationName || '',
+    fareEur: typeof t.fare === 'number' ? t.fare / 100 : null,
+  };
+}
+
+export async function trips(card, from = null, to = null) {
+  const xtat = await resolve(card);
+  let st = null;
+  const fetchPage = (offset) =>
+    api(`/api/v3/Trips/${xtat}?offset=${offset}&limit=50`, { secureTat: st });
+  let r = await fetchPage(0);
+  if (r.status === 403) { st = await secureTatToken(xtat); r = await fetchPage(0); }
+  const items = [], seen = new Set();
+  let offset = 0;
+  while (true) {
+    if (r.status !== 200) throw new Error(`trips -> ${r.status}: ${(await r.text()).slice(0, 200)}`);
+    const j = await r.json();
+    const batch = j.items || [];
+    const fresh = batch.filter(it => !seen.has(it.trip?.id));
+    fresh.forEach(it => seen.add(it.trip?.id));
+    items.push(...fresh);
+    if (j.endOfListReached || fresh.length === 0) break;
+    offset += batch.length || 50;
+    r = await fetchPage(offset);
+  }
+  let out = items.map(it => toTrip(it.trip));
+  if (from) out = out.filter(t => t.date >= from);
+  if (to) out = out.filter(t => t.date <= to);
+  out.sort((a, b) => (a.date + a.departureTime < b.date + b.departureTime ? 1 : -1));
+  return out;
+}
+
+export function tripsCsv(list) {
+  const esc = v => /[",\n]/.test(v) ? `"${String(v).replace(/"/g, '""')}"` : v;
+  const rows = [['Date', 'Departure_Time', 'Departure_Stop', 'Arrival_Time', 'Arrival_Stop',
+    'Transport_Mode', 'Operator', 'Fare_EUR'].join(',')];
+  for (const t of list) {
+    rows.push([t.date, t.departureTime, t.departure, t.arrivalTime, t.arrival, t.mode,
+      t.operator, t.fareEur == null ? '' : t.fareEur.toFixed(2)].map(esc).join(','));
+  }
+  return rows.join('\n') + '\n';
+}
+
+// --------------------------------------------------------------------------- //
+// SecureTat enrollment + browser login (interactive bootstrap)
+// --------------------------------------------------------------------------- //
+function ask(prompt) {
+  const rl = createInterface({ input: process.stdin, output: process.stderr });
+  return new Promise(res => rl.question(prompt, a => { rl.close(); res(a.trim()); }));
+}
+
+export async function secure(card, codeCb = () => ask('6-digit email code: ')) {
+  const xtat = await resolve(card);
+  const status = (await apiJson(`/api/v1/SecureTat/status/${xtat}`)).tatSecurityStatus;
+  if (status === 'Secured') return { already: true };
+  const key = (await apiJson(`/api/v1/SecureTat/${xtat}/generate-otp`, { method: 'POST' })).key;
+  const otp = await codeCb();
+  const authCode = (await apiJson('/api/v1/SecureTat/validate-otp', { method: 'POST', json: { key, otp } })).authCode;
+  await apiJson('/api/v1/SecureTat/token/auth-code', { method: 'POST', json: { authCode, xtat } });
+  return { secured: true };
+}
+
+export async function login({ email, password, codeCb } = {}) {
+  let chromium;
+  try { ({ chromium } = await import('playwright')); }
+  catch { throw new Error('`login` needs playwright: npm i playwright && npx playwright install chromium'); }
+
+  email ||= process.env.OVPAY_EMAIL || await ask('OVpay email: ');
+  password ||= process.env.OVPAY_PASSWORD || await ask('OVpay password: ');
+  codeCb ||= () => ask('6-digit email code: ');
+
+  const b64 = b => Buffer.from(b).toString('base64url');
+  const { randomBytes, createHash } = await import('node:crypto');
+  const verifier = b64(randomBytes(32));
+  const challenge = b64(createHash('sha256').update(verifier).digest());
+
+  const authz = (await (await fetch(`${IDENTITY}/generate-authorization-url`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ authorizationFlow: FLOW, codeChallenge: challenge, codeChallengeMethod: 'S256' }),
+  })).json()).redirectUri;
+
+  const cap = {};
+  const exchange = async (code) => {
+    const boundary = '----ovpay' + randomBytes(8).toString('hex');
+    const parts = { authorization_flow: FLOW, code, code_verifier: verifier };
+    const body = Object.entries(parts)
+      .map(([k, v]) => `--${boundary}\r\nContent-Disposition: form-data; name="${k}"\r\n\r\n${v}\r\n`)
+      .join('') + `--${boundary}--\r\n`;
+    const r = await fetch(`${IDENTITY}/retrieve-token`, {
+      method: 'POST', headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}` }, body });
+    cap.status = r.status; cap.tok = r.status === 200 ? await r.json() : await r.text();
+  };
+
+  const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
+  const ctx = await browser.newContext({ viewport: { width: 460, height: 860 } });
+  const grab = (u) => {
+    if (u && u.startsWith('ovpay://') && !cap.code) {
+      const code = new URL(u).searchParams.get('code');
+      if (code) { cap.code = code; return exchange(code); }
+    }
+  };
+  ctx.on('response', r => grab(r.headers()['location'] || ''));
+  ctx.on('request', r => grab(r.url()));
+  const page = await ctx.newPage();
+  await page.goto(authz, { waitUntil: 'domcontentloaded', timeout: 40000 });
+  await page.fill('#username', email);
+  await page.fill('#password', password);
+  await page.click('#kc-login');
+  await page.waitForSelector('#emailCode', { timeout: 120000 }).catch(() => {});
+  if (!cap.code) {
+    const otp = await codeCb();
+    await page.fill('#emailCode', otp).catch(() => {});       // auto-submits on 6th digit
+    await page.click('#submit-btn').catch(() => {});
+  }
+  const end = Date.now() + 120000;
+  while (Date.now() < end && !cap.tok) await page.waitForTimeout(300).catch(() => {});
+  await browser.close();
+
+  if (cap.status !== 200) throw new Error(`login failed: ${JSON.stringify(cap.tok).slice(0, 200)}`);
+  saveTokens(cap.tok);
+  return cap.tok;
+}
+
+// --------------------------------------------------------------------------- //
+// CLI
+// --------------------------------------------------------------------------- //
+async function main(argv) {
+  const [cmd, ...a] = argv;
+  switch (cmd) {
+    case 'cards': return cards();
+    case 'customer': return customer();
+    case 'trips': return trips(a[0], a[1], a[2]);
+    case 'export': {
+      const list = await trips(a[0], a[2], a[3]);
+      writeFileSync(a[1], tripsCsv(list));
+      return { file: a[1], trips: list.length };
+    }
+    case 'get': { const r = await api(a[0]); return { status: r.status, body: await r.json().catch(() => null) }; }
+    case 'secure': return secure(a[0]);
+    case 'login': { await login(); return { ok: true, note: 'offline token stored in ' + STATE }; }
+    default:
+      throw new Error('commands: cards | customer | trips | export | get | secure | login');
+  }
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main(process.argv.slice(2))
+    .then(out => { if (out !== undefined) console.log(JSON.stringify(out, null, 2)); })
+    .catch(e => { console.error(e.message); process.exit(1); });
+}

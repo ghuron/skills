@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "ghuron-skills",
+  "description": "Agent skills for Dutch everyday services: Magister (school), OVpay and HTM (public transport), ABN AMRO (bank exports), Albert Heijn (grocery invoices) and Epson printer ink.",
+  "owner": {
+    "name": "ghuron",
+    "url": "https://github.com/ghuron"
+  },
+  "plugins": [
+    {
+      "name": "magister",
+      "source": "./",
+      "skills": ["./skills/magister"],
+      "description": "Magister school portal: timetable with homework and tests, grades, absences, messages, and reporting a child sick.",
+      "category": "education",
+      "keywords": ["magister", "school", "homework", "huiswerk", "grades", "cijfers", "ziekmelding", "netherlands"],
+      "license": "MIT-0",
+      "homepage": "https://github.com/ghuron/skills/tree/main/skills/magister",
+      "repository": "https://github.com/ghuron/skills"
+    },
+    {
+      "name": "ovpay",
+      "source": "./",
+      "skills": ["./skills/ovpay"],
+      "description": "OVpay (Dutch public transport): cards, balances and trip history with fares, and CSV export.",
+      "category": "travel",
+      "keywords": ["ovpay", "public-transport", "ov", "trips", "expenses", "netherlands"],
+      "license": "MIT-0",
+      "homepage": "https://github.com/ghuron/skills/tree/main/skills/ovpay",
+      "repository": "https://github.com/ghuron/skills"
+    },
+    {
+      "name": "htm",
+      "source": "./",
+      "skills": ["./skills/htm"],
+      "description": "HTM (Den Haag public transport): passes, products, trips, Regio Vrij advice, and renewing a product into the cart.",
+      "category": "travel",
+      "keywords": ["htm", "den-haag", "the-hague", "public-transport", "subscription", "netherlands"],
+      "license": "MIT-0",
+      "homepage": "https://github.com/ghuron/skills/tree/main/skills/htm",
+      "repository": "https://github.com/ghuron/skills"
+    },
+    {
+      "name": "abn-amro",
+      "source": "./",
+      "skills": ["./skills/abn-amro"],
+      "description": "ABN AMRO transaction export (.TAB) to a clean CSV with counterparty, IBAN and description split out.",
+      "category": "finance",
+      "keywords": ["abn-amro", "bank", "transactions", "csv", "sepa", "netherlands"],
+      "license": "MIT-0",
+      "homepage": "https://github.com/ghuron/skills/tree/main/skills/abn-amro",
+      "repository": "https://github.com/ghuron/skills"
+    },
+    {
+      "name": "ah",
+      "source": "./",
+      "skills": ["./skills/ah"],
+      "description": "Albert Heijn online-order invoices (PDF) to one CSV per order, line by line.",
+      "category": "finance",
+      "keywords": ["albert-heijn", "groceries", "invoice", "pdf", "csv", "netherlands"],
+      "license": "MIT-0",
+      "homepage": "https://github.com/ghuron/skills/tree/main/skills/ah",
+      "repository": "https://github.com/ghuron/skills"
+    },
+    {
+      "name": "epson",
+      "source": "./",
+      "skills": ["./skills/epson"],
+      "description": "Ink cartridge levels of an Epson Expression XP-series network printer.",
+      "category": "home",
+      "keywords": ["epson", "printer", "ink"],
+      "license": "MIT-0",
+      "homepage": "https://github.com/ghuron/skills/tree/main/skills/epson",
+      "repository": "https://github.com/ghuron/skills"
+    }
+  ]
+}

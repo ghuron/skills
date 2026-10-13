@@ -1,0 +1,9 @@
+{
+  "name": "epson",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "node --test epson.test.mjs",
+    "publish": "clawhub publish ../skills/epson --slug epson --name \"Epson ink levels\" --version $npm_package_version"
+  }
+}

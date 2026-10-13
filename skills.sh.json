@@ -1,0 +1,25 @@
+{
+  "$schema": "https://skills.sh/schemas/skills.sh.schema.json",
+  "notGrouped": "bottom",
+  "groupings": [
+    {
+      "title": "School",
+      "description": "Dutch secondary schools on Magister.",
+      "skills": ["magister"]
+    },
+    {
+      "title": "Public transport",
+      "description": "Trips, fares and subscriptions on Dutch public transport.",
+      "skills": ["ovpay", "htm"]
+    },
+    {
+      "title": "Money",
+      "description": "Bank exports and grocery invoices to CSV.",
+      "skills": ["abn-amro", "ah"]
+    },
+    {
+      "title": "Home",
+      "skills": ["epson"]
+    }
+  ]
+}
