@@ -13,6 +13,11 @@
       "skills": ["ovpay", "htm"]
     },
     {
+      "title": "Energy",
+      "description": "Tariffs, bills and usage from Dutch energy suppliers.",
+      "skills": ["budgetthuis"]
+    },
+    {
       "title": "Money",
       "description": "Bank exports and grocery invoices to CSV.",
       "skills": ["abn-amro", "ah"]

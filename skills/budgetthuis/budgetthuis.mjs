@@ -1,0 +1,448 @@
+#!/usr/bin/env node
+/**
+ * Budget Thuis energy (budgetthuis.nl, "MijnBudget Energie") CLI wrapper —
+ * reads credentials from environment variables: BUDGETTHUIS_LOGIN, BUDGETTHUIS_PASSWORD
+ *
+ * Usage: node budgetthuis.mjs <command> [args]
+ *
+ * Commands:
+ *   account                          customer number, name, address, masked contact/bank details
+ *   contracts                        contracts: id, status, start, duration, supply address
+ *   tariffs                          current contract terms and tariffs (per kWh / m³ / month)
+ *   termijnbedrag                    monthly instalment, advice and allowed range
+ *   invoices                         invoices with amount, due date and open balance
+ *   invoice <invoiceId> [file.pdf]   download an invoice PDF
+ *   usage <from> <to> [hour|day|week|month] [contractId]
+ *                                    electricity, feed-in, gas and costs, dates YYYY-MM-DD
+ */
+
+import { fileURLToPath } from 'url';
+import { writeFileSync } from 'fs';
+
+const LOGIN = process.env.BUDGETTHUIS_LOGIN;
+const PASSWORD = process.env.BUDGETTHUIS_PASSWORD;
+
+const PORTAL = 'https://mijn.budgetthuis.nl';
+const API = 'https://api.budgetthuis.nl/energy/v1';
+const APP_API = 'https://app.api.nutsservices.nl/energy/v1'; // the Budget Thuis app's backend
+const UA = 'Mozilla/5.0';
+
+// ---------------------------------------------------------------------------
+// Login (Duende IdentityServer at accounts.budgetthuis.nl, plain HTML form)
+//
+//   1. GET  mijn.budgetthuis.nl/energie/overzicht  -> redirects to /connect/authorize
+//                                                    -> /inloggen (form + antiforgery)
+//   2. POST accounts.budgetthuis.nl/inloggen       -> 302 to /connect/authorize/callback
+//   3. follow redirects back to /energie/overzicht -> portal session cookie
+//
+// Every /energie page then embeds the customer's relationId and a 1-hour bearer
+// token, accepted by api.budgetthuis.nl and by the app's own backend.
+// ---------------------------------------------------------------------------
+
+function extract(html, re, what, flow = 'Login') {
+  const m = html.match(re);
+  if (!m) throw new Error(`${flow} flow changed: could not find ${what}`);
+  return m[1];
+}
+
+function decode(s) {
+  const named = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', euro: '€', sup3: '³' };
+  return s.replace(/&(#x[0-9a-f]+|#\d+|\w+);/gi, (m, e) =>
+    e[0] === '#' ? String.fromCodePoint(e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : +e.slice(1))
+      : named[e.toLowerCase()] ?? m);
+}
+
+/** Visible text of an HTML fragment, whitespace collapsed. */
+const text = html => decode(html.replace(/<(script|style)[\s\S]*?<\/\1>/gi, ' ').replace(/<[^>]+>/g, ' '))
+  .replace(/\s+/g, ' ').replace(/ ([,.;:!?])/g, '$1').trim();
+
+/** "€ 1.234,56" / "€ 400,-" / "€226" -> 1234.56 / 400 / 226 */
+const euros = s => +s.replace(/[€\s.]/g, '').replace(',-', '').replace(',', '.');
+
+/** "23-01-2026" -> "2026-01-23" */
+const isoDate = s => s.replace(/^(\d\d)-(\d\d)-(\d{4})$/, '$3-$2-$1');
+
+/** "2/1/2026 12:00:00 AM" (US format from the API) -> "2026-02-01" */
+const usDate = s => {
+  const m = s?.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  return m ? `${m[3]}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}` : s ?? null;
+};
+
+/** fetch, retrying network-level failures ("fetch failed": resets, DNS hiccups) a couple of times. */
+async function http(url, init) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fetch(url, init);
+    } catch (e) {
+      if (!(e instanceof TypeError) || attempt === 3) throw e;
+      await new Promise(r => setTimeout(r, 1000 * attempt));
+    }
+  }
+}
+
+/**
+ * Log in and return {cookie, relationId, token}. The portal's OIDC callback
+ * occasionally answers 500, so the whole flow is retried, except when the
+ * credentials themselves are rejected.
+ */
+export async function login(user = LOGIN, password = PASSWORD) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await loginOnce(user, password);
+    } catch (e) {
+      if (e.rejected || attempt === 3) throw e;
+    }
+  }
+}
+
+async function loginOnce(user, password) {
+  const jars = new Map(); // host -> Map(name -> value)
+  const jar = host => jars.get(host) ?? jars.set(host, new Map()).get(host);
+  const request = async (url, init = {}) => {
+    const { host } = new URL(url);
+    const r = await http(url, {
+      ...init,
+      redirect: 'manual',
+      headers: { 'User-Agent': UA, ...init.headers, Cookie: [...jar(host)].map(([k, v]) => `${k}=${v}`).join('; ') },
+    });
+    for (const sc of r.headers.getSetCookie()) {
+      const kv = sc.split(';', 1)[0];
+      const eq = kv.indexOf('=');
+      jar(host).set(kv.slice(0, eq).trim(), kv.slice(eq + 1).trim());
+    }
+    return r;
+  };
+  const follow = async (url, init) => {
+    let r = await request(url, init);
+    for (let i = 0; i < 10 && r.status >= 300 && r.status < 400; i++) {
+      url = new URL(r.headers.get('location'), url).href.replace(/^http:/, 'https:');
+      r = await request(url);
+    }
+    return { r, url, html: await r.text() };
+  };
+
+  // Step 1: the portal redirects to the IdentityServer login form.
+  const form = await follow(`${PORTAL}/energie/overzicht`);
+  if (!new URL(form.url).pathname.startsWith('/inloggen')) {
+    throw new Error(`Login flow changed: expected the login form, landed on ${form.url}`);
+  }
+  const field = name => decode(extract(form.html, new RegExp(`name="${name}"[^>]*value="([^"]*)"`), name));
+
+  // Step 2: post the credentials.
+  const posted = await request(new URL('/inloggen', form.url).href, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      ReturnUrl: field('ReturnUrl'),
+      Label: field('Label'),
+      Username: user,
+      Password: password,
+      button: 'login',
+      __RequestVerificationToken: field('__RequestVerificationToken'),
+    }).toString(),
+  });
+  if (posted.status !== 302) {
+    const err = (await posted.text()).match(/class="validation-error[^"]*">([\s\S]*?)<\/div>/);
+    if (!err) throw new Error(`Login flow changed: HTTP ${posted.status} from /inloggen without an error message`);
+    throw Object.assign(new Error(`Login failed: ${text(err[1])}`), { rejected: true });
+  }
+
+  // Step 3: back through the OIDC callback to the portal.
+  const home = await follow(new URL(posted.headers.get('location'), form.url).href);
+  if (new URL(home.url).origin !== PORTAL || !home.r.ok) {
+    throw new Error(`Login flow changed: ended on HTTP ${home.r.status} ${home.url.split('?')[0]} instead of the portal`);
+  }
+
+  return {
+    cookie: [...jar(new URL(PORTAL).host)].map(([k, v]) => `${k}=${v}`).join('; '),
+    relationId: extract(home.html, /id="relationId" value="(\d+)"/, 'relationId'),
+    token: extract(home.html, /\btoken: '(eyJ[^']+)'/, 'API token'),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Portal pages (cookie session) and the JSON API (bearer token)
+// ---------------------------------------------------------------------------
+
+/** Request a portal page, following redirects within the portal (e.g. to the contract's own page). */
+export async function portal(session, path, init = {}) {
+  let url = `${PORTAL}${path}`;
+  for (let i = 0; ; i++) {
+    const r = await http(url, {
+      ...init,
+      redirect: 'manual',
+      headers: { 'User-Agent': UA, ...init.headers, Cookie: session.cookie },
+    });
+    if (r.ok) return r;
+    const next = r.status >= 300 && r.status < 400 && new URL(r.headers.get('location'), url);
+    if (!next || next.origin !== PORTAL || i === 5) {
+      throw new Error(`HTTP ${r.status} for ${init.method ?? 'GET'} ${path}${next ? ` (redirect to ${next.href})` : ''}`);
+    }
+    url = next.href;
+  }
+}
+
+export async function api(session, path, base = API) {
+  const r = await http(`${base}/${path}`, {
+    headers: { 'User-Agent': UA, Accept: 'application/json', Authorization: `Bearer ${session.token}` },
+  });
+  if (!r.ok) throw new Error(`HTTP ${r.status} for ${base}/${path}: ${(await r.text()).slice(0, 200)}`);
+  return r.json();
+}
+
+// ---------------------------------------------------------------------------
+// account / contracts / tariffs / termijnbedrag
+// ---------------------------------------------------------------------------
+
+/** label -> value pairs from `<b>label</b> ... <div class="detail-value">value</div>` blocks. */
+function detailPairs(html) {
+  const out = {};
+  for (const m of html.matchAll(/<div class="detail-description">([\s\S]*?)<\/div>\s*<div class="detail-value">([\s\S]*?)<\/div>/g)) {
+    out[text(m[1].replace(/<span class="tooltip">[\s\S]*?<\/span>/g, ''))] = text(m[2]);
+  }
+  return out;
+}
+
+export async function account(session) {
+  const html = await (await portal(session, '/energie/gegevens')).text();
+  const d = detailPairs(html);
+  if (!d.Klantnummer) throw new Error('Portal changed: no Klantnummer on /energie/gegevens');
+  return {
+    customerNumber: d.Klantnummer,
+    salutation: d.Aanhef ?? null,
+    name: d.Naam ?? null,
+    firstName: d.Voornaam ?? null,
+    address: d.Correspondentieadres ?? null,
+    phone: d.Telefoonnummer ?? null,
+    email: d['E-mailadres'] ?? null,
+    iban: d.Rekeningnummer ?? null,
+    accountHolder: d.Rekeninghouder ?? null,
+  };
+}
+
+export async function contracts(session) {
+  const { contractDetails } = await api(session, `contractees/${session.relationId}/contracts`);
+  return contractDetails.map(c => {
+    const a = c.supplyAddress ?? {};
+    return {
+      contractId: c.contractId,
+      status: c.contractStatus,
+      startDate: c.contractStartDate?.slice(0, 10) ?? null,
+      durationMonths: c.contractDuration,
+      address: [[a.street, a.houseNumber, a.houseNumberExtension].filter(Boolean).join(' '), a.zipCode, a.city]
+        .filter(Boolean).join(', '),
+    };
+  });
+}
+
+const SECTIONS = {
+  'Contractgegevens': 'contract',
+  'Normaaltarief stroom': 'electricityNormal',
+  'Daltarief stroom': 'electricityLow',
+  'Enkeltarief stroom': 'electricitySingle',
+  'Gastarief': 'gas',
+  'Terugleververgoeding': 'feedIn',
+  'Vaste leveringskosten': 'fixedMonthly',
+};
+const LABELS = {
+  'Leveringsadres': 'address',
+  'Contracttype': 'type',
+  'Looptijd': 'durationMonths',
+  'Startdatum': 'startDate',
+  'Einddatum': 'endDate',
+  'Tarief': 'supply',
+  'Energiebelasting': 'energyTax',
+  'Totaal': 'total',
+  'Tarief (normaal)': 'normal',
+  'Tarief (dal)': 'low',
+  'Vaste leveringskosten stroom': 'electricity',
+  'Vaste leveringskosten gas': 'gas',
+};
+
+function value(label, raw) {
+  if (/^€/.test(raw)) return euros(raw);
+  if (/^\d\d-\d\d-\d{4}$/.test(raw)) return isoDate(raw);
+  if (label === 'durationMonths' && /^\d+$/.test(raw)) return +raw;
+  return raw;
+}
+
+export async function tariffs(session) {
+  const html = await (await portal(session, '/energie/contracten')).text();
+  const spec = html.slice(html.indexOf('print-me'));
+  if (spec.length === html.length) throw new Error('Portal changed: no tariff specification on /energie/contracten');
+
+  // The printable "Tarievenspecificatie": <div class="details"><h3>section</h3> left/right pairs ...
+  const out = {};
+  for (const block of spec.split('<div class="details">').slice(1)) {
+    const title = text(block.match(/<h3>([\s\S]*?)<\/h3>/)?.[1] ?? '');
+    if (!title) continue;
+    const key = SECTIONS[title] ?? title;
+    out[key] = {};
+    for (const m of block.matchAll(/<div class="left">([\s\S]*?)<\/div>\s*<div class="right">([\s\S]*?)<\/div>/g)) {
+      const label = text(m[1]).replace(/:$/, '');
+      const k = LABELS[label] ?? label;
+      out[key][k] = value(k, text(m[2]));
+    }
+  }
+
+  // The "Jouw contract" box above it has the discount, renewal offer and exit fee.
+  const box = html.slice(0, html.indexOf('print-me'));
+  const discount = box.match(/Budget korting:\s*<\/div>\s*<div class="right">([\s\S]*?)<\/div>/);
+  const fee = box.match(/Indicatie opzegvergoeding<\/h3>([\s\S]*?)<\/div>/);
+  return {
+    ...out,
+    discount: discount ? euros(text(discount[1])) : null,
+    canRenew: /Je kan verlengen!/.test(box),
+    cancellationFee: fee ? text(fee[1]) : null,
+    unit: 'EUR incl. btw; per kWh (electricity, feedIn), per m³ (gas), per month (fixedMonthly)',
+  };
+}
+
+export async function termijnbedrag(session) {
+  const html = await (await portal(session, '/energie/termijnbedrag')).text();
+  const t = text(html);
+  const num = (re, what) => {
+    const m = t.match(re);
+    if (!m) throw new Error(`Portal changed: could not find ${what} on /energie/termijnbedrag`);
+    return m[1];
+  };
+  const opt = re => t.match(re)?.[1] ?? null;
+  const optDate = re => { const d = opt(re); return d && isoDate(d); };
+  return {
+    current: euros(num(/Je termijnbedrag €\s*([\d.,]+)/, 'current amount')),
+    advice: euros(num(/Ons advies €\s*([\d.,]+)/, 'advice')),
+    minimum: +extract(html, /data-hard-minimum="(\d+)"/, 'minimum', 'Portal'),
+    maximum: +extract(html, /data-hard-maximum="(\d+)"/, 'maximum', 'Portal'),
+    message: opt(/(Je termijnbedrag (?:is|kan|moet)[^.]*\.(?:[^.]*dit is niet verplicht\.)?)/),
+    adviceUpdated: optDate(/advies is bijgewerkt op:\s*(\d\d-\d\d-\d{4})/),
+    basedOnKwh: +(opt(/(\d+) kWh stroom/) ?? NaN) || null,
+    basedOnGasM3: +(opt(/(\d+) m³ gas/) ?? NaN) || null,
+    remainingTerms: +(opt(/nog (\d+) termijnbedrag/) ?? NaN) || null,
+    yearlyReadingDate: optDate(/Op (\d\d-\d\d-\d{4}) zullen we/),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// invoices
+// ---------------------------------------------------------------------------
+
+export async function invoices(session) {
+  const res = await api(session, `contractees/${session.relationId}/invoices`);
+  const list = (res.invoices ?? []).map(i => ({
+    invoiceId: i.invoiceId,
+    invoiceNumber: i.invoiceNumber,
+    date: usDate(i.invoiceDate),
+    dueDate: usDate(i.dueDate),
+    description: i.description,
+    amount: i.amount,
+    balance: i.balance,
+    status: i.status || null,
+    actionNeeded: i.actionNeeded,
+  })).sort((a, b) => b.date.localeCompare(a.date));
+  return {
+    actionNeeded: res.actionNeeded,
+    openBalance: Math.round(list.reduce((s, i) => s + (i.balance || 0), 0) * 100) / 100,
+    invoices: list,
+  };
+}
+
+/** Download link for an invoice, as listed on /energie/facturen (it embeds the contractId). */
+export async function downloadInvoice(session, invoiceId, file = `${invoiceId}.pdf`) {
+  if (!/^\d+$/.test(invoiceId)) throw new Error('invoiceId must be the numeric invoiceId from `invoices`');
+  const html = await (await portal(session, '/energie/facturen')).text();
+  const path = html.match(new RegExp(`/energie/invoice-download/\\d+/${invoiceId}(?=")`))?.[0];
+  if (!path) throw new Error(`Invoice ${invoiceId} has no download on /energie/facturen (run \`invoices\` for ids)`);
+  const r = await portal(session, path);
+  const pdf = Buffer.from(await r.arrayBuffer());
+  if (pdf.subarray(0, 4).toString() !== '%PDF') throw new Error(`Invoice ${invoiceId}: download is not a PDF`);
+  writeFileSync(file, pdf);
+  return { file, bytes: pdf.length };
+}
+
+// ---------------------------------------------------------------------------
+// usage
+//
+// The app's usage screen: GET /contract/{contractId}/usagecosts/details with
+// PeriodDuration=Hour|Day|Week|Month|Year and PeriodFrom/PeriodTo (end exclusive).
+// The API widens the range to whole periods (a Day request returns whole months,
+// Month a whole year) and pads them with empty rows, so we trim and drop those.
+// ---------------------------------------------------------------------------
+
+const RESOLUTIONS = { hour: 'Hour', day: 'Day', week: 'Week', month: 'Month' };
+
+const nextDay = date => new Date(Date.parse(`${date}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+
+export async function usage(session, from, to, resolution = 'day', contractId) {
+  if (!/^\d{4}-\d\d-\d\d$/.test(from) || !/^\d{4}-\d\d-\d\d$/.test(to)) throw new Error('Dates must be YYYY-MM-DD');
+  if (!RESOLUTIONS[resolution]) throw new Error(`Resolution must be one of ${Object.keys(RESOLUTIONS).join(', ')}`);
+  if (!contractId) {
+    const active = (await contracts(session)).filter(c => c.status === 'Active');
+    if (active.length !== 1) throw new Error(`Pass a contractId; ${active.length} active contracts (run \`contracts\`)`);
+    contractId = active[0].contractId;
+  }
+  const end = nextDay(to);
+  const query = new URLSearchParams({ PeriodDuration: RESOLUTIONS[resolution], PeriodFrom: from, PeriodTo: end });
+  const res = await api(session, `contract/${contractId}/usagecosts/details?${query}`, APP_API);
+
+  const amount = x => x?.rawUsage ?? null;
+  const eur = x => x?.totalRawCosts?.amountGross ?? null;
+  const out = [];
+  for (const r of (res.overviewPeriods ?? []).flatMap(p => p.usageCostsPerPeriod)) {
+    // periodFrom/periodTo carry the Amsterdam offset, so their first 10 chars are local dates.
+    // Keep rows starting in [from, to], plus a week/month that starts earlier but runs into `from`.
+    const start = r.periodFrom.slice(0, 10);
+    if (start > to || (start < from && r.periodTo.slice(0, 10) <= from)) continue;
+    if (!r.usageElectricityConsumption && !r.usageGasConsumption) continue; // no reading (yet)
+    const elk = r.usageElectricityConsumption ? 0 : null; // within a reading, a missing split is 0
+    out.push({
+      from: r.periodFrom,
+      to: r.periodTo,
+      kwh: amount(r.usageElectricityConsumption),
+      kwhNormal: amount(r.usageElectricityNormalConsumption) ?? elk,
+      kwhLow: amount(r.usageElectricityLowConsumption) ?? elk,
+      kwhReturn: amount(r.usageElectricityProduction),
+      kwhReturnNormal: amount(r.usageElectricityNormalProduction) ?? (r.usageElectricityProduction ? 0 : null),
+      kwhReturnLow: amount(r.usageElectricityLowProduction) ?? (r.usageElectricityProduction ? 0 : null),
+      gasM3: amount(r.usageGasConsumption),
+      costElectricity: eur(r.costsElectricityConsumption),
+      costReturn: eur(r.costsElectricityProduction),
+      costGas: eur(r.costsGasConsumption),
+      costTotal: eur(r.totalCosts),
+      estimated: [r.usageElectricityConsumption, r.usageGasConsumption, r.totalCosts].some(x => x?.isInterpolated),
+    });
+  }
+  return out.sort((a, b) => a.from.localeCompare(b.from));
+}
+
+// ---------------------------------------------------------------------------
+// CLI
+// ---------------------------------------------------------------------------
+
+const USAGE = `Usage: node budgetthuis.mjs <command> [args]
+  account                          customer number, name, address, masked contact/bank details
+  contracts                        contracts: id, status, start, duration, supply address
+  tariffs                          current contract terms and tariffs
+  termijnbedrag                    monthly instalment, advice and allowed range
+  invoices                         invoices with amount, due date and open balance
+  invoice <invoiceId> [file.pdf]   download an invoice PDF
+  usage <from> <to> [hour|day|week|month] [contractId]
+                                   electricity, feed-in, gas and costs, dates YYYY-MM-DD`;
+
+async function main([cmd, ...args]) {
+  const commands = { // name: [required args, run]
+    account: [0, s => account(s)],
+    contracts: [0, s => contracts(s)],
+    tariffs: [0, s => tariffs(s)],
+    termijnbedrag: [0, s => termijnbedrag(s)],
+    invoices: [0, s => invoices(s)],
+    invoice: [1, s => downloadInvoice(s, args[0], args[1])],
+    usage: [2, s => usage(s, args[0], args[1], args[2], args[3])],
+  };
+  if (!commands[cmd] || args.length < commands[cmd][0]) { console.error(USAGE); process.exit(1); }
+  if (!LOGIN || !PASSWORD) { console.error('Set BUDGETTHUIS_LOGIN, BUDGETTHUIS_PASSWORD before running.'); process.exit(1); }
+  console.log(JSON.stringify(await commands[cmd][1](await login()), null, 2));
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main(process.argv.slice(2)).catch(e => { console.error(e.message); process.exit(1); });
+}

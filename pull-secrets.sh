@@ -45,6 +45,9 @@ infisical_path /epson > "$REPO/epson/.env"
 echo "==> Writing ovpay/.env"
 infisical_path /ovpay > "$REPO/ovpay/.env"
 
+echo "==> Writing budgetthuis/.env"
+infisical_path /budgetthuis > "$REPO/budgetthuis/.env"
+
 # ---------------------------------------------------------------------------
 # System secrets
 # ---------------------------------------------------------------------------

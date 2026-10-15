@@ -1,8 +1,8 @@
 # Agent skills for Dutch everyday services
 
 [Agent Skills](https://agentskills.io) that let an AI agent (Claude Code, Codex, Cursor, Gemini CLI,
-OpenClaw and other `SKILL.md`-compatible agents) work with the school portal, public transport, bank and
-supermarket accounts of a household in the Netherlands. Each skill is a small Node.js CLI without npm
+OpenClaw and other `SKILL.md`-compatible agents) work with the school portal, public transport, energy, bank
+and supermarket accounts of a household in the Netherlands. Each skill is a small Node.js CLI without npm
 dependencies that prints JSON or writes CSV, plus a `SKILL.md` that tells the agent how to use it.
 
 | Skill | What the agent can do | Needs |
@@ -10,6 +10,7 @@ dependencies that prints JSON or writes CSV, plus a `SKILL.md` that tells the ag
 | [magister](skills/magister/SKILL.md) | Magister school portal: timetable with homework and tests, grades, absences, messages, report a child sick | School host, username, password |
 | [ovpay](skills/ovpay/SKILL.md) | OVpay public transport: cards, balances, trip history with fares, CSV export | OVpay token (one-time login with `playwright`) |
 | [htm](skills/htm/SKILL.md) | HTM (Den Haag) public transport: passes, products, trips, Regio Vrij advice, renew a product into the cart | Mijn HTM login |
+| [budgetthuis](skills/budgetthuis/SKILL.md) | Budget Thuis energy: tariffs, contract, monthly instalment and advice, invoices (PDF), hourly to monthly electricity and gas usage with costs | MijnBudget login |
 | [abn-amro](skills/abn-amro/SKILL.md) | ABN AMRO transaction export (.TAB) to CSV, counterparty and IBAN split out | Nothing, works offline |
 | [ah](skills/ah/SKILL.md) | Albert Heijn online-order invoices (PDF) to CSV, one row per product | Python 3 + `pypdf` |
 | [epson](skills/epson/SKILL.md) | Ink levels of an Epson Expression XP-series network printer | Printer on the local network |
@@ -29,6 +30,7 @@ Claude Code, from this repo's plugin marketplace (each skill is its own plugin):
 /plugin install magister --marketplace ghuron/skills
 /plugin install ovpay --marketplace ghuron/skills
 /plugin install htm --marketplace ghuron/skills
+/plugin install budgetthuis --marketplace ghuron/skills
 /plugin install abn-amro --marketplace ghuron/skills
 /plugin install ah --marketplace ghuron/skills
 /plugin install epson --marketplace ghuron/skills
@@ -50,6 +52,7 @@ Skills that log in read credentials from environment variables. Set them where y
 | magister | `MAGISTER_HOST` (your school, e.g. `myschool.magister.net`), `MAGISTER_USER`, `MAGISTER_PASSWORD` |
 | ovpay | `OVPAY_REFRESH_TOKEN` (seed; see the skill), optional `OVPAY_STATE` |
 | htm | `HTM_LOGIN`, `HTM_PASSWORD`, optional `HTM_BIRTHDATE_<tokenId>` |
+| budgetthuis | `BUDGETTHUIS_LOGIN`, `BUDGETTHUIS_PASSWORD` |
 | epson | `EPSON_HOST` |
 
 Credentials are sent only to the service's own login and API hosts. The only state the skills keep
@@ -65,10 +68,10 @@ Almost everything is read-only. The exceptions, each documented in its `SKILL.md
 
 ## Disclaimer
 
-These are unofficial tools, not affiliated with or endorsed by Magister, OVpay, HTM, ABN AMRO,
-Albert Heijn or Epson. They use the same, undocumented APIs as the services' own websites and apps,
-which can change without notice. The skills that talk to a service have integration tests that run
-against real accounts to catch that.
+These are unofficial tools, not affiliated with or endorsed by Magister, OVpay, HTM, Budget Thuis,
+ABN AMRO, Albert Heijn or Epson. They use the same, undocumented APIs as the services' own websites
+and apps, which can change without notice. The skills that talk to a service have integration tests
+that run against real accounts to catch that.
 
 ## Repository layout
 

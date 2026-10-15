@@ -28,6 +28,7 @@ Per-skill secret paths:
 - `/htm` → `HTM_LOGIN`, `HTM_PASSWORD`
 - `/magister_parent` → parent account credentials
 - `/magister_child` → child account credentials
+- `/budgetthuis` → `BUDGETTHUIS_LOGIN`, `BUDGETTHUIS_PASSWORD`
 - `/ovpay` → `OVPAY_REFRESH_TOKEN` (seed offline token; `ovpay`'s test rotates it and writes the new one back here), `OVPAY_EMAIL`, `OVPAY_PASSWORD` (only used by `node ovpay.mjs login`)
 
 To refresh credentials at any time: `bash pull-secrets.sh`
