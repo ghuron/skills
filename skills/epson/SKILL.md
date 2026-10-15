@@ -2,7 +2,7 @@
 name: epson
 description: "Read the remaining ink cartridge levels (percent per colour) of an Epson Expression XP-series network printer from its built-in web server, as JSON. Use when the user asks how much ink is left, which cartridge to replace, or wants to monitor printer ink."
 license: MIT-0
-compatibility: "Requires Node.js 20+ and the printer on the local network; set EPSON_HOST to its IP address or hostname. Tested on the Expression Photo XP-8700."
+compatibility: "Requires Node.js 22+ and the printer on the local network; set EPSON_HOST to its IP address or hostname. Tested on the Expression Photo XP-8700. Variables can also go in a .env file in the skill folder; variables already set in the environment take precedence."
 ---
 # Commands
 

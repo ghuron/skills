@@ -6,7 +6,7 @@ set -euo pipefail
 INFISICAL_PROJECT_ID="d56a074c-446e-466b-a6ba-91284fe0a42b"
 INFISICAL_DOMAIN="https://eu.infisical.com/api"
 INFISICAL_ENV="dev"
-REPO="$(cd "$(dirname "$0")" && pwd)"
+SKILLS="$(cd "$(dirname "$0")/../skills" && pwd)"
 
 infisical_path() {
   infisical export \
@@ -28,37 +28,33 @@ get_secret() {
 }
 
 # ---------------------------------------------------------------------------
-# .env files for integration tests
+# Credentials, as .env files in the skill folders (read by the skills and their tests)
 # ---------------------------------------------------------------------------
-echo "==> Writing htm/.env"
-infisical_path /htm > "$REPO/htm/.env"
+echo "==> Writing skills/htm/.env"
+infisical_path /htm > "$SKILLS/htm/.env"
 
-echo "==> Writing magister/.parent.env"
-infisical_path /magister_parent > "$REPO/magister/.parent.env"
+echo "==> Writing skills/magister/.env (parent account)"
+infisical_path /magister_parent > "$SKILLS/magister/.env"
 
-echo "==> Writing magister/.child.env"
-infisical_path /magister_child > "$REPO/magister/.child.env"
+echo "==> Writing skills/magister/.child.env (tests only)"
+infisical_path /magister_child > "$SKILLS/magister/.child.env"
 
-echo "==> Writing epson/.env"
-infisical_path /epson > "$REPO/epson/.env"
+echo "==> Writing skills/epson/.env"
+infisical_path /epson > "$SKILLS/epson/.env"
 
-echo "==> Writing ovpay/.env"
-infisical_path /ovpay > "$REPO/ovpay/.env"
+echo "==> Writing skills/ovpay/.env"
+infisical_path /ovpay > "$SKILLS/ovpay/.env"
 
-echo "==> Writing budgetthuis/.env"
-infisical_path /budgetthuis > "$REPO/budgetthuis/.env"
+echo "==> Writing skills/budgetthuis/.env"
+infisical_path /budgetthuis > "$SKILLS/budgetthuis/.env"
 
 # ---------------------------------------------------------------------------
 # System secrets
 # ---------------------------------------------------------------------------
 echo "==> Loading system secrets"
-CLAWHUB_TOKEN=$(get_secret CLAWHUB_TOKEN /)
 GITHUB_TOKEN=$(get_secret GITHUB_TOKEN /)
 GIT_USER_NAME=$(get_secret GIT_USER_NAME /)
 GIT_USER_EMAIL=$(get_secret GIT_USER_EMAIL /)
-
-echo "==> Logging in to clawhub"
-"$HOME/.local/node_modules/.bin/clawhub" login --token "$CLAWHUB_TOKEN" --no-browser
 
 echo "==> Configuring git"
 git config --global user.name  "$GIT_USER_NAME"

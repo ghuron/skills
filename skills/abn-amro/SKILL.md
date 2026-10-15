@@ -2,7 +2,7 @@
 name: abn-amro
 description: "Convert an ABN AMRO (Dutch bank) transaction export (.TAB, the TXT download from Internet Banking) into a clean CSV with date, amount, balance, type (direct debit, iDEAL, transfer, card payment, ATM withdrawal) and the counterparty name, IBAN and description split out of the SEPA text. Can append only the new rows to an existing CSV and keep your own extra columns. Use when the user has an ABN AMRO export, wants to categorise or analyse Dutch bank transactions, or keeps a spending spreadsheet."
 license: MIT-0
-compatibility: "Requires Node.js 20+. Works offline on a downloaded export; no bank login."
+compatibility: "Requires Node.js 22+. Works offline on a downloaded export; no bank login."
 ---
 # Commands
 

@@ -2,7 +2,7 @@
  * Integration tests for htm.mjs
  * Run: node --test htm.test.mjs
  *
- * Picks up every *.env file in the project root and runs the same battery
+ * Picks up every *.env file in skills/htm/ and runs the same battery
  * of tests against each set of credentials.
  */
 
@@ -14,10 +14,10 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import {
   login, reorder, cancelOrderline, apiGet, orderApiCall, buildRegioCatalog, REGIO_VRIJ_PRODUCT_ID,
-} from '../skills/htm/htm.mjs';
+} from '../../skills/htm/htm.mjs';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
-const CLI = join(DIR, '../skills/htm/htm.mjs');
+const CLI = join(DIR, '../../skills/htm/htm.mjs');
 
 // "HTM 20% Korting" — already an orderable product on the account these .env
 // files belong to. Adjust if testing against a different account.
@@ -61,12 +61,13 @@ const daysAgo = n => new Date(Date.now() - n * 86_400_000).toISOString().slice(0
 const daysFromNow = n => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
 
 // ---------------------------------------------------------------------------
-// Fixtures — all *.env files in the project root
+// Fixtures — all *.env files in the skill folder
 // ---------------------------------------------------------------------------
 
-const envFiles = readdirSync(DIR)
+const SKILL = join(DIR, '../../skills/htm');
+const envFiles = readdirSync(SKILL)
   .filter(f => f.endsWith('.env'))
-  .map(f => ({ name: f, env: parseEnvFile(join(DIR, f)) }));
+  .map(f => ({ name: f, env: parseEnvFile(join(SKILL, f)) }));
 
 // ---------------------------------------------------------------------------
 // Per-credentials tests
@@ -232,11 +233,11 @@ test(
       orderApiCall(session, 'GET', `/v3/order/product/regions/${REGIO_VRIJ_PRODUCT_ID}`),
     ]);
     const live = buildRegioCatalog(wipkip, regionPrices);
-    const bundled = JSON.parse(readFileSync(join(DIR, '../skills/htm/regio-catalog.json'), 'utf8'));
+    const bundled = JSON.parse(readFileSync(join(DIR, '../../skills/htm/regio-catalog.json'), 'utf8'));
     assert.deepStrictEqual(
       live,
       bundled,
-      'skills/htm/regio-catalog.json is stale — run `node refresh-regio-catalog.mjs` and commit the diff.'
+      'skills/htm/regio-catalog.json is stale — run `node .ci/htm/refresh.mjs` and commit the diff.'
     );
   }
 );

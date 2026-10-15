@@ -6,6 +6,10 @@ Reads the given PDFs (or every *.pdf in a given folder) and writes each order's 
 or next to its PDF. Orders that already have a CSV are skipped so hand-written notes survive;
 --force rewrites them.
 Stops on any invoice line it does not recognise, or when the lines don't add up to the invoice total.
+
+pypdf's layout mode keeps the invoice's columns aligned, and the parser relies on that. The iDEAL
+payments listed on an invoice can differ from its total: top-ups for items added later, and refunds
+for missing items and returned crates, are paid separately.
 """
 import csv, glob, os, re, sys
 from decimal import Decimal

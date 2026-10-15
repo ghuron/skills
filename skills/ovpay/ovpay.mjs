@@ -12,7 +12,19 @@
  *
  * The offline refresh token ROTATES and the previous one is invalidated on use,
  * so the newest token is always persisted to OVPAY_STATE. Seed from
- * OVPAY_REFRESH_TOKEN is used only when no state file exists yet.
+ * OVPAY_REFRESH_TOKEN is used only when no state file exists yet. A fresh `login`
+ * revokes the previous offline session (one per client), so only log in again
+ * once the token has actually expired.
+ *
+ * There is no public API; this follows the OVpay Android app. Identity is
+ * Keycloak (realm ovpay-crm-b2c). The website's client (ovpayWebClient,
+ * api.ovpay.nl) gets a 60-minute token with no working refresh; the app's
+ * (ovpayAppClient, api.ovpay.app) gets an offline token valid ~30 days that
+ * slides and rotates. A token for one host is rejected (403) by the other.
+ * A WAF (Link11) blocks non-browser clients on login.ovpay.nl and www.ovpay.nl
+ * (HTTP 473), and Keycloak's own /token answers 502 to everyone but OVpay's
+ * backend, but api.ovpay.app and api.identity.ovpay.app are not behind it, so
+ * plain fetch works for everything except `login`.
  *
  * Usage: node ovpay.mjs <command> [args]
  *   cards                              list cards (name, balance, status, xtat)
@@ -29,6 +41,12 @@ import { homedir } from 'os';
 import { join, dirname } from 'path';
 import { createInterface } from 'readline';
 
+// Credentials may also sit in a .env next to this file; variables already set win.
+const ENV_FILE = new URL('.env', import.meta.url);
+if (existsSync(ENV_FILE)) process.loadEnvFile(ENV_FILE);
+
+// Token exchange and refresh go through this identity proxy, which makes the
+// WAF-blocked Keycloak /token call server-side.
 const IDENTITY = 'https://api.identity.ovpay.app/api/external/v1/Identity';
 const API = 'https://api.ovpay.app';
 const FLOW = 'App';
@@ -112,6 +130,12 @@ async function apiJson(path, opts) {
 
 // --------------------------------------------------------------------------- //
 // SecureTat (per-card step-up for trip history of secured cards)
+//
+// Trips of a card its owner secured answer 403 "A valid SecureTat access token
+// is required". For an already secured card the token is minted on demand with
+// the main bearer alone, no email code, and sent as `SecureTatAccessToken:
+// Bearer <token>` next to Authorization. Unsecured cards need nothing extra;
+// securing one (`secure`) is the only flow that needs an emailed code.
 // --------------------------------------------------------------------------- //
 async function secureTatToken(xtat) {
   const r = await api('/api/v1/SecureTat/token/refresh-token', { method: 'POST', json: { xtat } });
@@ -144,6 +168,8 @@ async function resolve(card) {
   return match.xtat;
 }
 
+// Fares are eurocents. checkInTimestamp carries the Europe/Amsterdam offset, so
+// its first 10 characters are the local date that from/to filter on.
 function toTrip(t) {
   const ci = t.checkInTimestamp || '', co = t.checkOutTimestamp || '';
   return {
@@ -212,6 +238,11 @@ export async function secure(card, codeCb = () => ask('6-digit email code: ')) {
   return { secured: true };
 }
 
+// The WAF runs a JavaScript challenge on the login page, so this drives headless
+// Chromium. The proxy's retrieve-token is multipart/form-data and needs
+// authorization_flow=App: without it the proxy exchanges as the web client and
+// Keycloak answers "Found different client_id in clientSession", which looks
+// like a PKCE or redirect bug.
 export async function login({ email, password, codeCb } = {}) {
   let chromium;
   try { ({ chromium } = await import('playwright')); }
@@ -261,7 +292,7 @@ export async function login({ email, password, codeCb } = {}) {
   await page.waitForSelector('#emailCode', { timeout: 120000 }).catch(() => {});
   if (!cap.code) {
     const otp = await codeCb();
-    await page.fill('#emailCode', otp).catch(() => {});       // auto-submits on 6th digit
+    await page.fill('#emailCode', otp).catch(() => {});       // auto-submits on 6th digit, navigating away mid-fill
     await page.click('#submit-btn').catch(() => {});
   }
   const end = Date.now() + 120000;

@@ -7,7 +7,8 @@
  * Commands:
  *   csv [--force] [--out <dir>] <pdf|dir>...   invoice (factuur) PDFs -> <order number>.csv
  *
- * Not yet: login, list orders, download an order's factuur (see ../README.md).
+ * Not yet: log in, list orders, and download an order's factuur, so that `csv` can run on what
+ * it fetched. Until then it only converts invoices you downloaded yourself.
  */
 
 import { spawnSync } from 'child_process';

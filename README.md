@@ -41,11 +41,14 @@ then install with `/plugin install magister@ghuron-skills`.
 
 Or copy `skills/<name>/` into your agent's skills directory, such as `~/.claude/skills/<name>/`.
 
-All skills need Node.js 20 or later.
+All skills need Node.js 22 or later.
 
 ## Credentials
 
-Skills that log in read credentials from environment variables. Set them where your agent runs:
+Skills that log in read credentials from environment variables. Set them where your agent runs, or,
+if your agent uses the skills straight from a clone of this repo, put them in a `.env` file in the
+skill's folder (`skills/htm/.env`); variables already set in the environment take precedence. A
+`.env` put into an installed copy is lost when `npx skills` updates the skill.
 
 | Skill | Variables |
 |---|---|
@@ -75,11 +78,12 @@ that run against real accounts to catch that.
 
 ## Repository layout
 
-- `skills/<name>/`: the installable skill, `SKILL.md` plus the files it runs.
-- `<name>/`: tests, implementation notes (`README.md`) and maintenance scripts for that skill.
+- `skills/<name>/`: the installable skill, `SKILL.md` plus the files it runs. Implementation notes
+  are comments in the code.
+- `.ci/`: tests and CI scripts. Integration tests log in with the same `skills/<name>/.env` files.
 
 ```bash
-cd magister && npm test
+cd .ci && node --test
 ```
 
 ## License

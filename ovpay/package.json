@@ -1,9 +1,0 @@
-{
-  "name": "ovpay",
-  "version": "0.1.0",
-  "type": "module",
-  "scripts": {
-    "test": "node --test ovpay.test.mjs",
-    "publish": "clawhub publish ../skills/ovpay --slug ovpay --name \"OVpay\" --version $npm_package_version"
-  }
-}

@@ -2,7 +2,7 @@
 name: ovpay
 description: "Read an OVpay account (check in and out with a bank card or OV-pas on Dutch public transport: trains, trams, buses, metro; ovpay.nl): cards, balances, profile and full trip history with fares, and export trips to CSV, for example for expense claims or travel-cost overviews. Use when the user asks about Dutch public transport trips, OV costs, check-ins and check-outs, or OVpay travel history."
 license: MIT-0
-compatibility: "Requires Node.js 20+ and network access to api.ovpay.app. Seed token via OVPAY_REFRESH_TOKEN; the rotating token is kept in OVPAY_STATE (default ~/.ovpay/tokens.json). The one-time login command needs playwright."
+compatibility: "Requires Node.js 22+ and network access to api.ovpay.app. Seed token via OVPAY_REFRESH_TOKEN; the rotating token is kept in OVPAY_STATE (default ~/.ovpay/tokens.json). The one-time login command needs playwright. Variables can also go in a .env file in the skill folder; variables already set in the environment take precedence."
 ---
 # Commands
 

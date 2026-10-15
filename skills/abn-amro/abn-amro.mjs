@@ -28,6 +28,12 @@ const amount = a => a.replace(',', '.');
 // BEA, Betaalpas <merchant>,PAS291 NR:…, 31.12.25/17:44 <place>        card payment
 // GEA, Betaalpas <atm>,PAS291 NR:…, 31.12.25/17:44 <place>             cash withdrawal
 // ABN AMRO Bank N.V. <fee lines>                                       bank fees
+//
+// Tagged values keep the bank's padding ("WATERBEDRIJF   NV") and can end in a space. A labelled
+// block that fills its 32 characters runs straight into the next label, and words can wrap
+// mid-word ("verze kering"). Phone payments say "Google Pay" instead of "Betaalpas", a card
+// reversal adds TERUGBOEKING-BEA-TRANSACTIE after the place, and a payment in another currency
+// shows its 1.75% + €0.15 surcharge: "USD 10,00 1EUR=1,1002 USD ECB Koers=1,1194 OPSLAG=1,75%".
 // ---------------------------------------------------------------------------
 
 const TAGS = 'TRTP|CSID|NAME|MARF|REMI|IBAN|BIC|EREF|ORDP|BENM|ADDR|ISDT|RTRN|CNTP|PURP|ULTC|ULTD|IREF|SVCL';
@@ -100,6 +106,7 @@ export function parseDescription(raw) {
 /**
  * Rows of a .TAB export (tab-separated, no header, Latin-1):
  * account, currency, date, balance before, balance after, value date, amount, description.
+ * Dates are YYYYMMDD; amounts have a decimal comma and no thousands separator.
  */
 export function parseTab(text) {
   return text.split(/\r?\n/).filter(l => l.trim()).map(line => {

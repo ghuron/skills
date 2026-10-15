@@ -2,7 +2,7 @@
 name: budgetthuis
 description: "Read a Budget Thuis energy account (Budget Energie, budgetthuis.nl 'MijnBudget', Dutch electricity and gas supplier): contracts, current tariffs per kWh and m³ with energy tax and fixed monthly costs, contract end date and exit fee, the monthly instalment (termijnbedrag) with Budget Thuis's advice, invoices with open balance and PDF download, and hourly, daily, weekly or monthly electricity, feed-in and gas usage with costs. Use when the user asks about their energy bill, energy prices or contract, gas or electricity consumption (also per hour or time of day), the termijnbedrag, or whether to renew or switch energy supplier."
 license: MIT-0
-compatibility: "Requires Node.js 20+ and network access to mijn.budgetthuis.nl, accounts.budgetthuis.nl, api.budgetthuis.nl and app.api.nutsservices.nl (the Budget Thuis app's backend). Credentials via BUDGETTHUIS_LOGIN and BUDGETTHUIS_PASSWORD (the MijnBudget account)."
+compatibility: "Requires Node.js 22+ and network access to mijn.budgetthuis.nl, accounts.budgetthuis.nl, api.budgetthuis.nl and app.api.nutsservices.nl (the Budget Thuis app's backend). Credentials via BUDGETTHUIS_LOGIN and BUDGETTHUIS_PASSWORD (the MijnBudget account). Variables can also go in a .env file in the skill folder; variables already set in the environment take precedence."
 ---
 # Commands
 

@@ -2,7 +2,7 @@
 name: ah
 description: "Turn Albert Heijn (Dutch supermarket, ah.nl) online-order invoices (factuur PDFs) into one CSV per order with a row per product: item, quantity, VAT, total, Bonus flag, deposits (statiegeld) and bags. Checks that the lines add up to the invoice total. Use when the user wants to analyse Albert Heijn grocery spending, split a grocery bill or track what they buy."
 license: MIT-0
-compatibility: "Requires Node.js 20+, Python 3 and pypdf (pip install pypdf). Works offline on downloaded invoice PDFs."
+compatibility: "Requires Node.js 22+, Python 3 and pypdf (pip install pypdf). Works offline on downloaded invoice PDFs."
 ---
 # Commands
 

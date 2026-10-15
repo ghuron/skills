@@ -2,7 +2,7 @@
  * Integration tests for magister.mjs
  * Run: node --test magister.test.mjs
  *
- * Picks up every *.env file in the project root and runs the same battery
+ * Picks up every *.env file in skills/magister/ and runs the same battery
  * of tests against each set of credentials.
  */
 
@@ -14,7 +14,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
 const DIR     = dirname(fileURLToPath(import.meta.url));
-const CLI     = join(DIR, '../skills/magister/magister.mjs');
+const CLI     = join(DIR, '../../skills/magister/magister.mjs');
 const DRY_RUN = join(DIR, 'dry-run.mjs');
 
 // ---------------------------------------------------------------------------
@@ -55,12 +55,13 @@ function runCLI(args, envVars = {}, nodeArgs = []) {
 }
 
 // ---------------------------------------------------------------------------
-// Fixtures — all *.env files in the project root
+// Fixtures — all *.env files in the skill folder
 // ---------------------------------------------------------------------------
 
-const envFiles = readdirSync(DIR)
+const SKILL = join(DIR, '../../skills/magister');
+const envFiles = readdirSync(SKILL)
   .filter(f => f.endsWith('.env'))
-  .map(f => ({ name: f, env: parseEnvFile(join(DIR, f)) }));
+  .map(f => ({ name: f, env: parseEnvFile(join(SKILL, f)) }));
 
 // ---------------------------------------------------------------------------
 // Per-credentials tests

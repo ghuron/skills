@@ -16,6 +16,11 @@
  */
 
 import { fileURLToPath } from 'url';
+import { existsSync } from 'fs';
+
+// Credentials may also sit in a .env next to this file; variables already set win.
+const ENV_FILE = new URL('.env', import.meta.url);
+if (existsSync(ENV_FILE)) process.loadEnvFile(ENV_FILE);
 
 // Normalize host: strip protocol and trailing slash so it is just the FQDN
 const HOST = (process.env.MAGISTER_HOST || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
@@ -183,7 +188,8 @@ const htmlToText = html => html
   .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n')
   .trim();
 
-// Afspraak.InfoType
+// Afspraak.InfoType: huiswerk, proefwerk, tentamen, schriftelijke overhoring, mondelinge overhoring,
+// informatie, aantekening
 const INFO_TYPES = { 1: 'homework', 2: 'test', 3: 'exam', 4: 'quiz', 5: 'oral', 6: 'info', 7: 'note' };
 
 const USAGE = 'Commands: students | schedule <id> <from> <to> | grades <id> [top] | infractions <id> <from> <to> | messages [top] | message <id> | report-sick <id> <date> [note]';
@@ -267,8 +273,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         }))));
         break;
       }
-      // Messages belong to the logged-in account, not to a student. Reading is GET-only: the web
-      // app marks a message read with a separate PATCH, so these commands never change read status.
+      // Messages belong to the logged-in account, not to a student. The web app's messages page is a
+      // separate Angular app at /magister-berichten/; folders with unread counts are at
+      // /api/berichten/mappen/alle. Reading is GET-only: the web app marks a message read with a
+      // separate PATCH /api/berichten/berichten, so these commands never change read status.
       case 'messages': {
         const [top = '25'] = rest;
         const raw = await apiGet(`/api/berichten/postvakin/berichten?top=${top}&skip=0`);
@@ -307,7 +315,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         break;
       }
       case 'report-sick': {
-        // Mirrors the web app's "Ziek melden": parents only, for today or tomorrow, weekdays only.
+        // Mirrors the web app's "Ziek melden" (ziekmeldenController in its aanwezigheid chunk): parents
+        // only, for today or tomorrow, weekdays only. The regular attendance.overview scope suffices.
         const [id, date, note = ''] = rest;
         if (!id || !/^\d{4}-\d{2}-\d{2}$/.test(date ?? '')) {
           console.error('Usage: report-sick <id> <YYYY-MM-DD> [note]');

@@ -17,7 +17,11 @@
  */
 
 import { fileURLToPath } from 'url';
-import { writeFileSync } from 'fs';
+import { existsSync, writeFileSync } from 'fs';
+
+// Credentials may also sit in a .env next to this file; variables already set win.
+const ENV_FILE = new URL('.env', import.meta.url);
+if (existsSync(ENV_FILE)) process.loadEnvFile(ENV_FILE);
 
 const LOGIN = process.env.BUDGETTHUIS_LOGIN;
 const PASSWORD = process.env.BUDGETTHUIS_PASSWORD;
@@ -35,8 +39,14 @@ const UA = 'Mozilla/5.0';
 //   2. POST accounts.budgetthuis.nl/inloggen       -> 302 to /connect/authorize/callback
 //   3. follow redirects back to /energie/overzicht -> portal session cookie
 //
-// Every /energie page then embeds the customer's relationId and a 1-hour bearer
-// token, accepted by api.budgetthuis.nl and by the app's own backend.
+// The portal is the confidential OIDC client, so there is no PKCE or JavaScript
+// on our side. A wrong password returns the form again with HTTP 200 and a
+// div.validation-error.
+//
+// Every /energie page then embeds the customer's relationId (a hidden input
+// holding the Klantnummer, not the JWT's contact_person claim) and, in the chat
+// widget's config, a 1-hour bearer token. Its scopes include webApi and
+// mobileApi, so api.budgetthuis.nl and the app's own backend both accept it.
 // ---------------------------------------------------------------------------
 
 function extract(html, re, what, flow = 'Login') {
@@ -83,7 +93,7 @@ async function http(url, init) {
 /**
  * Log in and return {cookie, relationId, token}. The portal's OIDC callback
  * occasionally answers 500, so the whole flow is retried, except when the
- * credentials themselves are rejected.
+ * credentials themselves are rejected: retrying those could lock the account.
  */
 export async function login(user = LOGIN, password = PASSWORD) {
   for (let attempt = 1; ; attempt++) {
@@ -162,6 +172,23 @@ async function loginOnce(user, password) {
 
 // ---------------------------------------------------------------------------
 // Portal pages (cookie session) and the JSON API (bearer token)
+//
+// api.budgetthuis.nl is an Azure API Management gateway: unknown paths give a
+// generic 404 whatever the auth, so it can't be explored by guessing. Its base
+// URLs come from the Next.js renewal app's env config (ENERGY_API_BASE_URL,
+// HOME_API_BASE_URL); the contracts endpoint is in that bundle, invoices was
+// found by probing. Both want the relationId; a contact-person or contract id
+// gives a descriptive 403.
+//
+// app.api.nutsservices.nl (Nuts is Budget Thuis's parent) is the Android app's
+// backend. Its endpoints come from the app's DEX string tables and method
+// annotations: R8 renamed Retrofit's @GET/@Query/@Path, so match on annotation
+// values that look like API paths. An invalid query value makes the API list the
+// valid ones. Besides usagecosts/details below, the same token works for
+// customer/{contractId}/contract-info (tariffs as JSON),
+// energy/v2/contract/{contractId}/monthlyAmount (termijnbedrag and advice),
+// energy/v2/contract/{contractId}/houseHoldUsage and home/v1/contactPerson. The
+// hourlytariff endpoints answer 404 unless the contract has dynamic prices.
 // ---------------------------------------------------------------------------
 
 /** Request a portal page, following redirects within the portal (e.g. to the contract's own page). */
@@ -192,6 +219,9 @@ export async function api(session, path, base = API) {
 
 // ---------------------------------------------------------------------------
 // account / contracts / tariffs / termijnbedrag
+//
+// Untested: accounts with several addresses. The portal has kies-adres (choose
+// address) routes for that; tariffs and termijnbedrag read whatever it shows first.
 // ---------------------------------------------------------------------------
 
 /** label -> value pairs from `<b>label</b> ... <div class="detail-value">value</div>` blocks. */
@@ -272,6 +302,7 @@ export async function tariffs(session) {
   if (spec.length === html.length) throw new Error('Portal changed: no tariff specification on /energie/contracten');
 
   // The printable "Tarievenspecificatie": <div class="details"><h3>section</h3> left/right pairs ...
+  // Unknown sections keep their Dutch title, so a dynamic or electricity-only contract still comes through.
   const out = {};
   for (const block of spec.split('<div class="details">').slice(1)) {
     const title = text(block.match(/<h3>([\s\S]*?)<\/h3>/)?.[1] ?? '');
@@ -298,6 +329,12 @@ export async function tariffs(session) {
   };
 }
 
+/**
+ * /energie/termijnbedrag redirects to /energie/wijzigen-termijnbedrag/{contractId}. The slider's
+ * data-hard-minimum/maximum are the allowed range. The form's amount input is pre-filled with the
+ * advice, so the current amount comes from the "Je termijnbedrag" heading. Changing it would be a
+ * plain form POST (advance_amount[amount] + advance_amount[_token]); the skill stays read-only.
+ */
 export async function termijnbedrag(session) {
   const html = await (await portal(session, '/energie/termijnbedrag')).text();
   const t = text(html);
@@ -346,7 +383,10 @@ export async function invoices(session) {
   };
 }
 
-/** Download link for an invoice, as listed on /energie/facturen (it embeds the contractId). */
+/**
+ * Download link for an invoice, as listed on /energie/facturen (it embeds the contractId). Read
+ * rather than built, so an account with several contracts gets the right one.
+ */
 export async function downloadInvoice(session, invoiceId, file = `${invoiceId}.pdf`) {
   if (!/^\d+$/.test(invoiceId)) throw new Error('invoiceId must be the numeric invoiceId from `invoices`');
   const html = await (await portal(session, '/energie/facturen')).text();
@@ -366,6 +406,21 @@ export async function downloadInvoice(session, invoiceId, file = `${invoiceId}.p
 // PeriodDuration=Hour|Day|Week|Month|Year and PeriodFrom/PeriodTo (end exclusive).
 // The API widens the range to whole periods (a Day request returns whole months,
 // Month a whole year) and pads them with empty rows, so we trim and drop those.
+//
+// Hour returns one overview period per day (23 or 25 rows on DST days) and any
+// range in one call (9 months ≈ 7 MB, ~9 s), starting on the first full day
+// after the contract start. Hour, day and month totals agree to the Wh. Costs
+// are usage × the all-in tariff; fixed costs have their own endpoint
+// (fixedCostsPerPeriod, same parameters). The data is fresher than the website,
+// which lags 2-3 days, and recent gas values are isInterpolated until the final
+// reading.
+//
+// Fallback if this API goes away: the website's "Mijn verbruik" page reloads via
+// POST /energie/verbruik/overzicht/data/{contractId}/day/{elk|gas|cost}/{YYYY-MM-01},
+// which returns {"html": …} with the month's rows inline as amCharts
+// `chart.data = [...]`. That has whole kWh/m³ and days only, an extra all-zero
+// row repeating the last date of each finished month, and all-zero rows for
+// days without a reading.
 // ---------------------------------------------------------------------------
 
 const RESOLUTIONS = { hour: 'Hour', day: 'Day', week: 'Week', month: 'Month' };

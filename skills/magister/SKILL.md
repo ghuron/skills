@@ -2,7 +2,7 @@
 name: magister
 description: "Read a Dutch secondary-school student's Magister (magister.net) data as JSON: timetable (rooster) with homework (huiswerk) and tests (toetsen), grades (cijfers), absences, and inbox messages (berichten); and report a child sick (ziekmelding) with parent credentials. Works with parent (ouder) and student (leerling) accounts. Use when the user asks about a child's school schedule, homework, upcoming tests, grades, absences or school messages, or wants to call a child in sick."
 license: MIT-0
-compatibility: "Requires Node.js 20+ and network access to accounts.magister.net and the school's *.magister.net host. Credentials via MAGISTER_HOST (the school's magister.net host), MAGISTER_USER and MAGISTER_PASSWORD."
+compatibility: "Requires Node.js 22+ and network access to accounts.magister.net and the school's *.magister.net host. Credentials via MAGISTER_HOST (the school's magister.net host), MAGISTER_USER and MAGISTER_PASSWORD. Variables can also go in a .env file in the skill folder; variables already set in the environment take precedence."
 ---
 # Commands
 

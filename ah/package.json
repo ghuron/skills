@@ -1,9 +1,0 @@
-{
-  "name": "ah",
-  "version": "0.1.0",
-  "type": "module",
-  "scripts": {
-    "test": "node --test ah.test.mjs",
-    "publish": "clawhub publish ../skills/ah --slug ah --name \"Albert Heijn\" --version $npm_package_version"
-  }
-}

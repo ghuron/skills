@@ -2,7 +2,7 @@
 name: htm
 description: "Manage an HTM account (The Hague / Den Haag public transport, htm.nl 'Mijn HTM'): list passes (OV-pas and contactless bank cards), active and expired products and subscriptions, and trip history; check whether a Regio Vrij flat-rate subscription would pay off given past trips; put a product such as HTM 20% Korting in the cart to renew it (payment stays manual). Use for HTM tram and bus subscriptions, travel costs or trip history in Den Haag."
 license: MIT-0
-compatibility: "Requires Node.js 20+ and network access to www.htm.nl. Credentials via HTM_LOGIN and HTM_PASSWORD (the Mijn HTM account); optional HTM_BIRTHDATE_<tokenId> for age-based products."
+compatibility: "Requires Node.js 22+ and network access to www.htm.nl. Credentials via HTM_LOGIN and HTM_PASSWORD (the Mijn HTM account); optional HTM_BIRTHDATE_<tokenId> for age-based products. Variables can also go in a .env file in the skill folder; variables already set in the environment take precedence."
 ---
 # Commands
 

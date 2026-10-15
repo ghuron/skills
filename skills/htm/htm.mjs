@@ -14,7 +14,11 @@
  */
 
 import { fileURLToPath } from 'url';
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
+
+// Credentials may also sit in a .env next to this file; variables already set win.
+const ENV_FILE = new URL('.env', import.meta.url);
+if (existsSync(ENV_FILE)) process.loadEnvFile(ENV_FILE);
 
 const LOGIN = process.env.HTM_LOGIN;
 const PASSWORD = process.env.HTM_PASSWORD;
@@ -43,6 +47,12 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 //      (state, client_info, code) targeting www.htm.nl/signin-oidc
 //   5. POST www.htm.nl/signin-oidc with that form -> 302 to /mijn-htm/,
 //      sets the .AspNetCore.Cookies session cookie used by every API below.
+//
+// HTM's policy names the credential field `email`, where every public B2C
+// example uses `signInName`. Posting `signInName`, or leaving out
+// X-Requested-With, gets a generic "AADB2C90278 Unable to validate the
+// information provided" that looks like a CSRF or credentials problem. A wrong
+// password gives a different, clearer message.
 // ---------------------------------------------------------------------------
 
 function extract(html, re, what, flow = 'Login') {
@@ -123,6 +133,11 @@ export async function login(user = LOGIN, password = PASSWORD) {
 
 // ---------------------------------------------------------------------------
 // Authenticated GET against www.htm.nl's own API (same-origin, cookie auth)
+//
+// www.htm.nl is its own backend-for-frontend: the frontend's Swagger client
+// (PortalCustomer) calls relative paths like /v1/PortalCustomer/Trips. The
+// HATEOAS `links` in responses point at services.api.htm.nl instead, which
+// doesn't accept the session cookie and which the frontend never calls; ignore them.
 // ---------------------------------------------------------------------------
 
 export async function apiGet(session, path, query = {}) {
@@ -139,7 +154,14 @@ export async function apiGet(session, path, query = {}) {
 // Same session cookie as above, but mutating calls are also protected by
 // ASP.NET Core antiforgery: a cookie + RequestVerificationToken header pair
 // scraped from a server-rendered page, fetched lazily once per session.
-// Without it they answer a bare 400. See README.md.
+// Without it they answer a bare 400 (since ~Sep 2026). The cookie comes from
+// Set-Cookie, the token from `window.__PERPLEX_DATA__.umbCtx={…,antiForgeryToken:'…'}`
+// (a JS object literal, not JSON). The frontend also sends X-UMB-KEY/X-UMB-CULTURE
+// from that object; the API doesn't check them.
+//
+// The JS bundles hardcode X-API-Key values (TEMP_EXPOSED_API_PORTAL_CUSTOMER_KEY,
+// TEMP_EXPOSED_API_ORDER_V3_KEY). Until ~Sep 2026 /v3/order/* required the
+// latter; no endpoint used here needs either key any more.
 // ---------------------------------------------------------------------------
 
 const CART_URL = 'https://www.htm.nl/winkelwagen/';
@@ -249,7 +271,7 @@ export async function reizen(session, tokenId, from, to) {
     status: t.tripStatus,
     transport: t.transportType,
     line: t.lineId,
-    fare: t.fare / 100,
+    fare: t.fare / 100, // eurocents, checked against a bank statement
     currency: t.currency,
     checkin: t.checkinTransactionTimestamp,
     checkout: t.checkoutTransactionTimestamp,
@@ -257,6 +279,15 @@ export async function reizen(session, tokenId, from, to) {
     to: stopName(t.checkoutLocation),
   }));
 }
+
+// A missed checkout (status CKO_MISSING/CKO_EXPECTED) can't be fixed from here.
+// HTM links such a trip to zelfregelen.ovpay.nl/reisoverzicht, which wants the
+// bank statement's NLOV… payment reference, so it only works for bank cards.
+// That site's bundle has an OV-pas path (getPaymentsByOvPas,
+// putTripCorrectionOvPas), but it sits behind a feature flag that's off
+// (featureFlagOVPasSearchEnabled), its PUT needs an `xbot` id that HTM's
+// TripDetails returns as null, and both paths are reCAPTCHA-gated. For an
+// OV-pas only HTM/OVpay customer service can correct it.
 
 // ---------------------------------------------------------------------------
 // regioAdvies — is a "Regio Vrij" (Den Haag/Delft/Zoetermeer area flat-rate)
@@ -272,7 +303,10 @@ export async function reizen(session, tokenId, from, to) {
 // members' passes costs one trip-history fetch per pass and no catalog fetch
 // at all — and regio-advies no longer needs the order API key. htm.test.mjs
 // re-fetches live and fails loudly if the bundle has drifted; run
-// `node refresh-regio-catalog.mjs` to update it.
+// `node .ci/htm/refresh.mjs` to update it. Only 12 of the 25 priced areas have
+// a polygon in wipKipGeoData: the Den Haag/Delft/Zoetermeer ones (DH7x/HL6x).
+// The Rotterdam/Voorne-Putten ones (R1x/VP8x/ZH9x/M99) presumably live in
+// RET's/EBS's copy of the tool, so the catalog leaves them out.
 //
 // All that coverage computation ever needs is "is this stopId inside this
 // region", so the catalog stores precomputed stop *membership* rather than
@@ -423,11 +457,17 @@ export async function regioAdvies(session, tokenIds, from, to, ageProfile = 'Adu
 // reorder — configure a product and add it to the cart for a pass. Stops
 // short of payment: HTM's checkout hands off to Buckaroo (iDEAL/etc.), which
 // requires interactive bank authorization no script can do. Returns a
-// checkoutUrl to open in a browser and pay manually.
+// checkoutUrl to open in a browser and pay manually. The cart page itself only
+// renders its contents through this same API in client-side JS, so a plain GET
+// of it shows an empty cart even when the order is there.
 //
 // HTM caps how far in advance you can set a custom start date: a validFrom
 // more than 30 days out gets a validation remark ("The start date is too far
-// in the future..."), which surfaces as-is.
+// in the future..."), which surfaces as-is. The PATCH itself succeeds, so only
+// checking validationErrors would let it through. validUntil follows
+// automatically, one product period later. There is no renew endpoint:
+// prolonging is ordering a new instance that starts when the current one ends,
+// within that 30-day window.
 // ---------------------------------------------------------------------------
 
 export async function reorder(session, tokenId, productId, validFrom, birthdate) {
@@ -448,6 +488,8 @@ export async function reorder(session, tokenId, productId, validFrom, birthdate)
   const matchLine = order => order.orderLines.find(l =>
     l.productId === productId && (l.customerTokens ?? []).every(isThisPass));
 
+  // A customer has one persistent draft ("concept") order: initialize returns it
+  // if it exists and ignores the orderLines passed, so the line is added explicitly.
   let order = await orderApiCall(session, 'POST', '/v3/order/initialize', { orderLines: [{ productId }] });
   let line = matchLine(order);
   if (!line) {
@@ -457,7 +499,8 @@ export async function reorder(session, tokenId, productId, validFrom, birthdate)
 
   // Re-attaching a token that's already on the line doesn't replace it — it adds
   // a second, duplicate customerTokens entry, which then makes the next PATCH
-  // (date change) fail with a 500. Only attach if it isn't there yet.
+  // (date change) fail with an opaque 500 UpdateOrderLineOnOrder. Only attach if
+  // it isn't there yet.
   const alreadyAttached = line.customerTokens?.some(isThisPass);
   if (!alreadyAttached) {
     order = await orderApiCall(session, 'POST', `/v3/order/orderline/${line.orderLineId}/token`, {
@@ -470,8 +513,11 @@ export async function reorder(session, tokenId, productId, validFrom, birthdate)
     order = await orderApiCall(session, 'PATCH', `/v3/order/orderline/${line.orderLineId}`, { validFrom });
   }
 
-  // Age-based products (e.g. Regio Vrij "Reductie") need the pass owner's
-  // birthdate on every order, even though it's registered on the card — see README.md.
+  // Age-based products (e.g. Regio Vrij "Reductie", padBirthDate in
+  // mandatoryCustomerDataItems) need the pass owner's birthdate on every order.
+  // It is registered on the card, but encrypted: HTM can only read it back via an
+  // emailed OTP (/v3/pad/generate-otp, then /v3/pad/{xtat}?otp=), so each order
+  // asks again and matches the answer against the card.
   const lineIn = o => o.orderLines.find(l => l.orderLineId === line.orderLineId);
   const needsBirthdate = lineIn(order).validations?.some(v => v.code === 'OVPAY_TOKEN_PAD_BIRTHDATE_REQUIRED');
   if (needsBirthdate && birthdate) {

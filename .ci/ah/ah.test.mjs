@@ -20,7 +20,7 @@ const hasInvoices = existsSync(FIXTURES) && readdirSync(FIXTURES).some(f => f.en
 
 test('invoice PDFs turn into the expected CSVs', { skip: !hasInvoices && 'no invoices in .fixtures/' }, () => {
   const out = mkdtempSync(join(tmpdir(), 'ah-'));
-  const r = spawnSync(process.execPath, [join(DIR, '../skills/ah/ah.mjs'), 'csv', '--out', out, FIXTURES], { encoding: 'utf8' });
+  const r = spawnSync(process.execPath, [join(DIR, '../../skills/ah/ah.mjs'), 'csv', '--out', out, FIXTURES], { encoding: 'utf8' });
   assert.equal(r.status, 0, r.stderr);
   for (const f of readdirSync(join(FIXTURES, 'expected'))) {
     assert.equal(readFileSync(join(out, f), 'utf8'), readFileSync(join(FIXTURES, 'expected', f), 'utf8'), f);

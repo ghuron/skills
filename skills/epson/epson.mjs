@@ -11,7 +11,12 @@
  */
 
 import { fileURLToPath } from 'url';
+import { existsSync } from 'fs';
 import https from 'https';
+
+// EPSON_HOST may also sit in a .env next to this file; variables already set win.
+const ENV_FILE = new URL('.env', import.meta.url);
+if (existsSync(ENV_FILE)) process.loadEnvFile(ENV_FILE);
 
 const HOST = process.env.EPSON_HOST;
 
@@ -41,6 +46,11 @@ function httpsGet(url, timeoutMs = 10_000) {
 
 // ---------------------------------------------------------------------------
 // fetchPage — GET the EWS status page, fall back to secondary URL on non-ok
+//
+// Consumer Epson inkjets have no JSON/XML endpoint for ink levels, so the HTML
+// status page is the only source short of SNMP. It needs no login on a typical
+// home setup; a printer locked down in the EWS admin settings answers non-ok.
+// The secondary URL exists on some firmware versions only.
 // ---------------------------------------------------------------------------
 
 const PRIMARY  = host => `https://${host}/PRESENTATION/HTML/TOP/PRTINFO.HTML`;
@@ -77,6 +87,8 @@ export async function fetchPage(host) {
 //   - A .tank div with a CSS gradient whose second stop is the fill percentage
 //   - A .clrname div with the color abbreviation (BK, M, C, LC, Y, LM)
 // The maintenance box uses .mbicn instead of .clrname and is skipped.
+// Some firmware encodes the level as the pixel width of a progress bar instead
+// of 0-100; the test's range check catches that.
 // ---------------------------------------------------------------------------
 
 const COLOR_NAME = {

@@ -1,4 +1,5 @@
 .*
 !.gitignore
 !.claude-plugin/
+!.ci/
 node_modules/
