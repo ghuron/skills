@@ -32,15 +32,15 @@ bash .ci/bootstrap.sh    # installs infisical/claude, logs in, pulls secrets
 
 Infisical project: UUID `d56a074c-446e-466b-a6ba-91284fe0a42b`, domain `eu.infisical.com`.
 
-Root path (`/`) of the `dev` environment must have:
-`GITHUB_TOKEN`, `GIT_USER_NAME`, `GIT_USER_EMAIL`
+Root path (`/`) of the `dev` environment must have `GIT_USER_NAME` and `GIT_USER_EMAIL`. An optional
+`GITHUB_TOKEN` replaces `~/.git-credentials`; without it, git keeps whatever credentials it already has.
 
 Per-skill secret paths, pulled into `skills/<name>/.env`:
 - `/htm` → `HTM_LOGIN`, `HTM_PASSWORD`, optional `HTM_BIRTHDATE_<tokenId>`
 - `/magister_parent` → parent account credentials (`.env`)
 - `/magister_child` → child account credentials (`.child.env`)
 - `/budgetthuis` → `BUDGETTHUIS_LOGIN`, `BUDGETTHUIS_PASSWORD`
-- `/epson` → `EPSON_HOST`
+- `/epson` → `EPSON_HOST` (not created yet; until it is, the epson integration tests are skipped)
 - `/ovpay` → `OVPAY_REFRESH_TOKEN` (seed offline token; `ovpay`'s test rotates it and writes the new one back here), `OVPAY_EMAIL`, `OVPAY_PASSWORD` (only used by `node ovpay.mjs login`)
 
 To refresh credentials at any time: `bash .ci/pull-secrets.sh`

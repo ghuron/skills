@@ -27,26 +27,27 @@ get_secret() {
     --silent
 }
 
+# Writes an Infisical path's secrets to skills/<file>. A missing or empty path is skipped, so one
+# skill without secrets neither stops the run nor leaves an empty .env that makes its tests fail.
+write_env() {
+  local secrets
+  if secrets=$(infisical_path "$1") && [ -n "$secrets" ]; then
+    printf '%s\n' "$secrets" > "$SKILLS/$2"
+    echo "==> Wrote skills/$2"
+  else
+    echo "==> Skipped skills/$2: nothing at $1 in Infisical"
+  fi
+}
+
 # ---------------------------------------------------------------------------
 # Credentials, as .env files in the skill folders (read by the skills and their tests)
 # ---------------------------------------------------------------------------
-echo "==> Writing skills/htm/.env"
-infisical_path /htm > "$SKILLS/htm/.env"
-
-echo "==> Writing skills/magister/.env (parent account)"
-infisical_path /magister_parent > "$SKILLS/magister/.env"
-
-echo "==> Writing skills/magister/.child.env (tests only)"
-infisical_path /magister_child > "$SKILLS/magister/.child.env"
-
-echo "==> Writing skills/epson/.env"
-infisical_path /epson > "$SKILLS/epson/.env"
-
-echo "==> Writing skills/ovpay/.env"
-infisical_path /ovpay > "$SKILLS/ovpay/.env"
-
-echo "==> Writing skills/budgetthuis/.env"
-infisical_path /budgetthuis > "$SKILLS/budgetthuis/.env"
+write_env /htm             htm/.env
+write_env /magister_parent magister/.env
+write_env /magister_child  magister/.child.env   # tests only
+write_env /epson           epson/.env
+write_env /ovpay           ovpay/.env
+write_env /budgetthuis     budgetthuis/.env
 
 # ---------------------------------------------------------------------------
 # System secrets
@@ -59,9 +60,13 @@ GIT_USER_EMAIL=$(get_secret GIT_USER_EMAIL /)
 echo "==> Configuring git"
 git config --global user.name  "$GIT_USER_NAME"
 git config --global user.email "$GIT_USER_EMAIL"
-git config --global credential.helper store
-printf 'https://%s:%s@github.com\n' "$GIT_USER_NAME" "$GITHUB_TOKEN" > ~/.git-credentials
-chmod 600 ~/.git-credentials
+if [ -n "$GITHUB_TOKEN" ]; then
+  git config --global credential.helper store
+  printf 'https://%s:%s@github.com\n' "$GIT_USER_NAME" "$GITHUB_TOKEN" > ~/.git-credentials
+  chmod 600 ~/.git-credentials
+else
+  echo "    No GITHUB_TOKEN in Infisical: keeping the existing git credentials"
+fi
 
 echo ""
 echo "Secrets pulled. Environment is ready."
