@@ -303,18 +303,18 @@ export async function reizen(session, tokenId, from, to) {
 // members' passes costs one trip-history fetch per pass and no catalog fetch
 // at all — and regio-advies no longer needs the order API key. htm.test.mjs
 // re-fetches live and fails loudly if the bundle has drifted; run
-// `node .ci/htm/refresh.mjs` to update it. Only 12 of the 25 priced areas have
-// a polygon in wipKipGeoData: the Den Haag/Delft/Zoetermeer ones (DH7x/HL6x).
-// The Rotterdam/Voorne-Putten ones (R1x/VP8x/ZH9x/M99) presumably live in
-// RET's/EBS's copy of the tool, so the catalog leaves them out.
+// `node .ci/htm/refresh.mjs` to update it. Only the Den Haag/Delft/Zoetermeer
+// areas (DH7x/HL6x), about half of the priced ones, have a polygon in
+// wipKipGeoData. The Rotterdam/Voorne-Putten ones (R1x/VP8x/ZH9x/M99)
+// presumably live in RET's/EBS's copy of the tool, so the catalog leaves them out.
 //
 // All that coverage computation ever needs is "is this stopId inside this
 // region", so the catalog stores precomputed stop *membership* rather than
 // coordinates or polygons. Several of HTM's named regions are explicitly
-// combinations of smaller ones (e.g. "DH72 | Den Haag Centrum /
-// Leidschendam / Voorburg / Leidschenveen" is a strict superset of
-// "DH70 | Den Haag Centrum", and "HL64"/"HL65" each contain ~10 of the other
-// 11 regions) — repeating their ~1250-stop membership list per region would
+// combinations of smaller ones (e.g. "DH75 | Den Haag Centrum /
+// Leidschendam / Voorburg / Leidschenveen / Zoetermeer" contains
+// "DH70 | Den Haag Centrum" and "HL60 | Zoetermeer", and "HL64"/"HL65" each
+// contain nearly all the other regions) — repeating their ~1250-stop membership list per region would
 // be ~8x larger than necessary, so each region is instead stored as the
 // other regions it fully contains (`includes`) plus only the stops not
 // already covered by one of those (`extraStopIds`). A trip is "covered" by a
