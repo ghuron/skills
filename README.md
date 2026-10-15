@@ -7,13 +7,13 @@ dependencies that prints JSON or writes CSV, plus a `SKILL.md` that tells the ag
 
 | Skill | What the agent can do | Needs |
 |---|---|---|
-| [magister](skills/magister/SKILL.md) | Magister school portal: timetable with homework and tests, grades, absences, messages, report a child sick | School host, username, password |
-| [ovpay](skills/ovpay/SKILL.md) | OVpay public transport: cards, balances, trip history with fares, CSV export | OVpay token (one-time login with `playwright`) |
-| [htm](skills/htm/SKILL.md) | HTM (Den Haag) public transport: passes, products, trips, Regio Vrij advice, renew a product into the cart | Mijn HTM login |
-| [budgetthuis](skills/budgetthuis/SKILL.md) | Budget Thuis energy: tariffs, contract, monthly instalment and advice, invoices (PDF), hourly to monthly electricity and gas usage with costs | MijnBudget login |
-| [abn-amro](skills/abn-amro/SKILL.md) | ABN AMRO transaction export (.TAB) to CSV, counterparty and IBAN split out | Nothing, works offline |
-| [ah](skills/ah/SKILL.md) | Albert Heijn online-order invoices (PDF) to CSV, one row per product | Python 3 + `pypdf` |
-| [epson](skills/epson/SKILL.md) | Ink levels of an Epson Expression XP-series network printer | Printer on the local network |
+| [magister](magister/SKILL.md) | Magister school portal: timetable with homework and tests, grades, absences, messages, report a child sick | School host, username, password |
+| [ovpay](ovpay/SKILL.md) | OVpay public transport: cards, balances, trip history with fares, CSV export | OVpay token (one-time login with `playwright`) |
+| [htm](htm/SKILL.md) | HTM (Den Haag) public transport: passes, products, trips, Regio Vrij advice, renew a product into the cart | Mijn HTM login |
+| [budgetthuis](budgetthuis/SKILL.md) | Budget Thuis energy: tariffs, contract, monthly instalment and advice, invoices (PDF), hourly to monthly electricity and gas usage with costs | MijnBudget login |
+| [abn-amro](abn-amro/SKILL.md) | ABN AMRO transaction export (.TAB) to CSV, counterparty and IBAN split out | Nothing, works offline |
+| [ah](ah/SKILL.md) | Albert Heijn online-order invoices (PDF) to CSV, one row per product | Python 3 + `pypdf` |
+| [epson](epson/SKILL.md) | Ink levels of an Epson Expression XP-series network printer | Printer on the local network |
 
 ## Install
 
@@ -39,7 +39,7 @@ Claude Code, from this repo's plugin marketplace (each skill is its own plugin):
 On Claude Code older than 2.1.275, add the marketplace first with `/plugin marketplace add ghuron/skills`,
 then install with `/plugin install magister@ghuron-skills`.
 
-Or copy `skills/<name>/` into your agent's skills directory, such as `~/.claude/skills/<name>/`.
+Or copy `<name>/` into your agent's skills directory, such as `~/.claude/skills/<name>/`.
 
 All skills need Node.js 22 or later.
 
@@ -47,7 +47,7 @@ All skills need Node.js 22 or later.
 
 Skills that log in read credentials from environment variables. Set them where your agent runs, or,
 if your agent uses the skills straight from a clone of this repo, put them in a `.env` file in the
-skill's folder (`skills/htm/.env`); variables already set in the environment take precedence. A
+skill's folder (`htm/.env`); variables already set in the environment take precedence. A
 `.env` put into an installed copy is lost when `npx skills` updates the skill.
 
 | Skill | Variables |
@@ -78,9 +78,9 @@ that run against real accounts to catch that.
 
 ## Repository layout
 
-- `skills/<name>/`: the installable skill, `SKILL.md` plus the files it runs. Implementation notes
+- `<name>/`: the installable skill, `SKILL.md` plus the files it runs. Implementation notes
   are comments in the code.
-- `.ci/`: tests and CI scripts. Integration tests log in with the same `skills/<name>/.env` files.
+- `.ci/`: tests and CI scripts. Integration tests log in with the same `<name>/.env` files.
 
 ```bash
 cd .ci && node --test

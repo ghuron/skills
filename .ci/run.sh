@@ -18,7 +18,7 @@ run_tests() {
 for test_dir in "$CI"/*/; do
   test_dir="${test_dir%/}"
   skill=$(basename "$test_dir")
-  skill_dir="$REPO/skills/$skill"
+  skill_dir="$REPO/$skill"
   echo ""
   echo "========================================"
   echo "  $skill"

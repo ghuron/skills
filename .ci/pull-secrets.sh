@@ -6,7 +6,7 @@ set -euo pipefail
 INFISICAL_PROJECT_ID="d56a074c-446e-466b-a6ba-91284fe0a42b"
 INFISICAL_DOMAIN="https://eu.infisical.com/api"
 INFISICAL_ENV="dev"
-SKILLS="$(cd "$(dirname "$0")/../skills" && pwd)"
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
 
 infisical_path() {
   infisical export \
@@ -27,15 +27,15 @@ get_secret() {
     --silent
 }
 
-# Writes an Infisical path's secrets to skills/<file>. A missing or empty path is skipped, so one
+# Writes an Infisical path's secrets to <skill>/<file>. A missing or empty path is skipped, so one
 # skill without secrets neither stops the run nor leaves an empty .env that makes its tests fail.
 write_env() {
   local secrets
   if secrets=$(infisical_path "$1") && [ -n "$secrets" ]; then
-    printf '%s\n' "$secrets" > "$SKILLS/$2"
-    echo "==> Wrote skills/$2"
+    printf '%s\n' "$secrets" > "$REPO/$2"
+    echo "==> Wrote $2"
   else
-    echo "==> Skipped skills/$2: nothing at $1 in Infisical"
+    echo "==> Skipped $2: nothing at $1 in Infisical"
   fi
 }
 

@@ -1,11 +1,11 @@
 This repo will be public. Keep personal data out of it, test fixtures included: credentials go in
-`skills/<name>/.env` and real exports and invoices in `.ci/<name>/.fixtures/`, both gitignored like every dotfile.
+`<name>/.env` and real exports and invoices in `.ci/<name>/.fixtures/`, both gitignored like every dotfile.
 
 ## Layout
 
-- `skills/<name>/`: the skill itself, which is what agents install. `SKILL.md` plus the files it runs. Nothing else
-  goes here: aggregators and `npx skills add` copy the whole directory. Implementation notes (how a login works,
-  API quirks found by reverse engineering) are code comments next to the code they explain.
+- `<name>/` at the top level: the skill itself, which is what agents install. `SKILL.md` plus the files it runs.
+  Nothing else goes here: aggregators and `npx skills add` copy the whole directory. Implementation notes (how a
+  login works, API quirks found by reverse engineering) are code comments next to the code they explain.
 - `.ci/`: what only the maintainer needs. `bootstrap.sh`, `pull-secrets.sh`, `run.sh`, and per skill `.ci/<name>/`
   with its tests, test helpers and `refresh.mjs` if the skill bundles static data.
 - `README.md`, `.claude-plugin/marketplace.json`, `skills.sh.json`: what aggregators and users read. They list
@@ -21,7 +21,7 @@ Skills read credentials from environment variables. A skill that needs them firs
 folder with `process.loadEnvFile()`; variables already set in the environment take precedence. Never load a `.env`
 from the working directory: it could point a skill at another host and send the user's password there.
 
-Tests read the same files: every `skills/<name>/*.env`, running once per file. Magister has `.env` (parent account)
+Tests read the same files: every `<name>/*.env`, running once per file. Magister has `.env` (parent account)
 and `.child.env`.
 
 ## Bootstrap (fresh machine)
@@ -35,7 +35,7 @@ Infisical project: UUID `d56a074c-446e-466b-a6ba-91284fe0a42b`, domain `eu.infis
 Root path (`/`) of the `dev` environment must have `GIT_USER_NAME` and `GIT_USER_EMAIL`. An optional
 `GITHUB_TOKEN` replaces `~/.git-credentials`; without it, git keeps whatever credentials it already has.
 
-Per-skill secret paths, pulled into `skills/<name>/.env`:
+Per-skill secret paths, pulled into `<name>/.env`:
 - `/htm` → `HTM_LOGIN`, `HTM_PASSWORD`, optional `HTM_BIRTHDATE_<tokenId>`
 - `/magister_parent` → parent account credentials (`.env`)
 - `/magister_child` → child account credentials (`.child.env`)
@@ -70,7 +70,7 @@ is publishing.
 
 ## Adding a new skill
 
-1. Create `skills/<name>/<name>.mjs` and `skills/<name>/SKILL.md`
+1. Create `<name>/<name>.mjs` and `<name>/SKILL.md`
 2. Create `.ci/<name>/<name>.test.mjs`
 3. Add credential paths to Infisical and to `.ci/pull-secrets.sh`
 4. List the skill in `README.md`, `.claude-plugin/marketplace.json` and `skills.sh.json`
@@ -78,7 +78,7 @@ is publishing.
 ## Skill with static data (HTM pattern)
 
 Skills that bundle a snapshot of external data follow this pattern:
-- `skills/<name>/<data>.json` — the bundled snapshot
+- `<name>/<data>.json` — the bundled snapshot
 - `.ci/<name>/refresh.mjs` — fetches live data and regenerates the snapshot
 - A test asserts the bundled snapshot matches live data; when it fails, `refresh.mjs` regenerates it
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Refreshes skills/htm/regio-catalog.json from HTM's live wipkip/getdata + region
+ * Refreshes htm/regio-catalog.json from HTM's live wipkip/getdata + region
  * prices endpoints. Run this when the "regio-advies: bundled region catalog
  * matches live data" test in htm.test.mjs fails, then review the diff and
  * commit it. Reads HTM_LOGIN/HTM_PASSWORD the same way htm.mjs does.
@@ -11,7 +11,7 @@
 import { writeFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { login, apiGet, orderApiCall, buildRegioCatalog, REGIO_VRIJ_PRODUCT_ID } from '../../skills/htm/htm.mjs';
+import { login, apiGet, orderApiCall, buildRegioCatalog, REGIO_VRIJ_PRODUCT_ID } from '../../htm/htm.mjs';
 
 const session = await login();
 const [wipkip, regionPrices] = await Promise.all([
@@ -20,6 +20,6 @@ const [wipkip, regionPrices] = await Promise.all([
 ]);
 
 const catalog = buildRegioCatalog(wipkip, regionPrices);
-const outPath = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'skills', 'htm', 'regio-catalog.json');
+const outPath = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'htm', 'regio-catalog.json');
 writeFileSync(outPath, JSON.stringify(catalog, null, 2) + '\n');
 console.log(`Wrote ${catalog.regions.length} regions to ${outPath}`);

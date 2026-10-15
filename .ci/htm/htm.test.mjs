@@ -2,7 +2,7 @@
  * Integration tests for htm.mjs
  * Run: node --test htm.test.mjs
  *
- * Picks up every *.env file in skills/htm/ and runs the same battery
+ * Picks up every *.env file in htm/ and runs the same battery
  * of tests against each set of credentials.
  */
 
@@ -14,10 +14,10 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import {
   login, reorder, cancelOrderline, apiGet, orderApiCall, buildRegioCatalog, REGIO_VRIJ_PRODUCT_ID,
-} from '../../skills/htm/htm.mjs';
+} from '../../htm/htm.mjs';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
-const CLI = join(DIR, '../../skills/htm/htm.mjs');
+const CLI = join(DIR, '../../htm/htm.mjs');
 
 // "HTM 20% Korting" — already an orderable product on the account these .env
 // files belong to. Adjust if testing against a different account.
@@ -64,7 +64,7 @@ const daysFromNow = n => new Date(Date.now() + n * 86_400_000).toISOString().sli
 // Fixtures — all *.env files in the skill folder
 // ---------------------------------------------------------------------------
 
-const SKILL = join(DIR, '../../skills/htm');
+const SKILL = join(DIR, '../../htm');
 const envFiles = readdirSync(SKILL)
   .filter(f => f.endsWith('.env'))
   .map(f => ({ name: f, env: parseEnvFile(join(SKILL, f)) }));
@@ -233,11 +233,11 @@ test(
       orderApiCall(session, 'GET', `/v3/order/product/regions/${REGIO_VRIJ_PRODUCT_ID}`),
     ]);
     const live = buildRegioCatalog(wipkip, regionPrices);
-    const bundled = JSON.parse(readFileSync(join(DIR, '../../skills/htm/regio-catalog.json'), 'utf8'));
+    const bundled = JSON.parse(readFileSync(join(DIR, '../../htm/regio-catalog.json'), 'utf8'));
     assert.deepStrictEqual(
       live,
       bundled,
-      'skills/htm/regio-catalog.json is stale — run `node .ci/htm/refresh.mjs` and commit the diff.'
+      'htm/regio-catalog.json is stale — run `node .ci/htm/refresh.mjs` and commit the diff.'
     );
   }
 );

@@ -1,6 +1,6 @@
 /**
  * Integration tests for ovpay.mjs
- * Run: node --test ovpay.test.mjs   (reads OVPAY_REFRESH_TOKEN from skills/ovpay/.env)
+ * Run: node --test ovpay.test.mjs   (reads OVPAY_REFRESH_TOKEN from ovpay/.env)
  *
  * OVpay's offline token rotates and invalidates on every refresh, so the skill
  * persists the newest token to OVPAY_STATE (default ~/.ovpay/tokens.json). On a
@@ -16,7 +16,7 @@ import { dirname, join } from 'path';
 import { homedir } from 'os';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
-const CLI = join(DIR, '../../skills/ovpay/ovpay.mjs');
+const CLI = join(DIR, '../../ovpay/ovpay.mjs');
 const STATE = process.env.OVPAY_STATE || join(homedir(), '.ovpay', 'tokens.json');
 
 function parseEnvFile(path) {
@@ -29,7 +29,7 @@ function parseEnvFile(path) {
   return vars;
 }
 
-const ENV = { ...parseEnvFile(join(DIR, '../../skills/ovpay/.env')), ...process.env };
+const ENV = { ...parseEnvFile(join(DIR, '../../ovpay/.env')), ...process.env };
 
 function runCLI(args) {
   const r = spawnSync('node', [CLI, ...args], { encoding: 'utf8', env: ENV, timeout: 60_000 });

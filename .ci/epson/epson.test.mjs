@@ -2,7 +2,7 @@
  * Integration tests for epson.mjs
  * Run: node --test epson.test.mjs
  *
- * Picks up every *.env file in skills/epson/ and runs the same battery
+ * Picks up every *.env file in epson/ and runs the same battery
  * of tests against each set of credentials.
  */
 
@@ -12,10 +12,10 @@ import { spawnSync } from 'child_process';
 import { readFileSync, readdirSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { parseInkLevels } from '../../skills/epson/epson.mjs';
+import { parseInkLevels } from '../../epson/epson.mjs';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
-const CLI = join(DIR, '../../skills/epson/epson.mjs');
+const CLI = join(DIR, '../../epson/epson.mjs');
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -52,7 +52,7 @@ function runCLI(args, envVars = {}) {
 // Fixtures — all *.env files in the skill folder
 // ---------------------------------------------------------------------------
 
-const SKILL = join(DIR, '../../skills/epson');
+const SKILL = join(DIR, '../../epson');
 const envFiles = readdirSync(SKILL)
   .filter(f => f.endsWith('.env'))
   .map(f => ({ name: f, env: parseEnvFile(join(SKILL, f)) }));

@@ -1,6 +1,6 @@
 /**
  * Integration tests for budgetthuis.mjs
- * Run: node --test budgetthuis.test.mjs   (reads BUDGETTHUIS_LOGIN/PASSWORD from skills/budgetthuis/.env)
+ * Run: node --test budgetthuis.test.mjs   (reads BUDGETTHUIS_LOGIN/PASSWORD from budgetthuis/.env)
  *
  * Asserts the shape of every command's output against a live account, so a
  * portal or API change fails loudly instead of returning wrong data.
@@ -14,7 +14,7 @@ import { dirname, join } from 'path';
 import { tmpdir } from 'os';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
-const CLI = join(DIR, '../../skills/budgetthuis/budgetthuis.mjs');
+const CLI = join(DIR, '../../budgetthuis/budgetthuis.mjs');
 
 function parseEnvFile(path) {
   const vars = {};
@@ -26,7 +26,7 @@ function parseEnvFile(path) {
   return vars;
 }
 
-const ENV = { ...process.env, ...parseEnvFile(join(DIR, '../../skills/budgetthuis/.env')) };
+const ENV = { ...process.env, ...parseEnvFile(join(DIR, '../../budgetthuis/.env')) };
 const skip = !(ENV.BUDGETTHUIS_LOGIN && ENV.BUDGETTHUIS_PASSWORD) && 'no BUDGETTHUIS_LOGIN/PASSWORD';
 
 function runCLI(args) {

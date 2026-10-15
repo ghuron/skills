@@ -12,10 +12,10 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { parseDescription, parseTab, parseCsv, appendRows } from '../../skills/abn-amro/abn-amro.mjs';
+import { parseDescription, parseTab, parseCsv, appendRows } from '../../abn-amro/abn-amro.mjs';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
-const CLI = join(DIR, '../../skills/abn-amro/abn-amro.mjs');
+const CLI = join(DIR, '../../abn-amro/abn-amro.mjs');
 const pad = s => s.padEnd(32);
 
 const TAB = [
