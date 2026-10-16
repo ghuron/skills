@@ -1,6 +1,6 @@
 ---
 name: ovpay
-description: "Read an OVpay account (check in and out with a bank card or OV-pas on Dutch public transport: trains, trams, buses, metro; ovpay.nl): cards, balances, profile and full trip history with fares, and export trips to CSV, for example for expense claims or travel-cost overviews. Use when the user asks about Dutch public transport trips, OV costs, check-ins and check-outs, or OVpay travel history."
+description: "Read an OVpay account (check in and out with a bank card or OV-pas on Dutch public transport: trains, trams, buses, metro; ovpay.nl): cards, balances, profile and full trip history with fares, and export trips to CSV, for example for expense claims or travel-cost overviews; can also turn on trip-history protection (SecureTat) for a card. Use when the user asks about Dutch public transport trips, OV costs, check-ins and check-outs, or OVpay travel history."
 license: MIT-0
 compatibility: "Requires Node.js 22+ and network access to api.ovpay.app and api.identity.ovpay.app (login.ovpay.nl for `login`). Env: OVPAY_REFRESH_TOKEN (seed token), OVPAY_STATE (token file, default ~/.ovpay/tokens.json), OVPAY_EMAIL and OVPAY_PASSWORD (optional, for `login`), from the environment or a .env in the skill folder (the environment wins)."
 ---

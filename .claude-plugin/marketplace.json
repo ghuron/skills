@@ -22,7 +22,7 @@
       "name": "ovpay",
       "source": "./",
       "skills": ["./ovpay"],
-      "description": "OVpay (Dutch public transport): cards, balances and trip history with fares, and CSV export.",
+      "description": "OVpay (Dutch public transport): cards, balances and trip history with fares, CSV export, and turning on trip-history protection for a card.",
       "category": "travel",
       "keywords": ["ovpay", "public-transport", "ov", "trips", "expenses", "netherlands"],
       "license": "MIT-0",
