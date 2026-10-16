@@ -20,6 +20,7 @@
 import { fileURLToPath } from 'url';
 import { existsSync, writeFileSync } from 'fs';
 import { randomUUID } from 'crypto';
+import { setTimeout as sleep } from 'timers/promises';
 
 // Credentials may also sit in a .env next to this file; variables already set win.
 const ENV_FILE = new URL('.env', import.meta.url);
@@ -68,7 +69,7 @@ async function http(url, init) {
       return await fetch(url, init);
     } catch (e) {
       if (!(e instanceof TypeError) || attempt === 3) throw e;
-      await new Promise(r => setTimeout(r, 1000 * attempt));
+      await sleep(1000 * attempt);
     }
   }
 }
@@ -159,12 +160,17 @@ export async function login(username = process.env.VODAFONE_USERNAME, password =
 // products have their own /my/prepaid/{bc}/products/{id} endpoints; untested.
 // ---------------------------------------------------------------------------
 
-export async function rest(session, path) {
+/** GET /rest/<path> with the bearer token; throws on an HTTP error. */
+async function get(session, path, accept = 'application/json') {
   const r = await http(`${REST}/${path}`, {
-    headers: { 'User-Agent': UA, Accept: 'application/json', Authorization: `Bearer ${session.token}` },
+    headers: { 'User-Agent': UA, Accept: accept, Authorization: `Bearer ${session.token}` },
   });
   if (!r.ok) throw new Error(`HTTP ${r.status} for /rest/${path.split('?')[0]}`);
-  const body = await r.json();
+  return r;
+}
+
+export async function rest(session, path) {
+  const body = await (await get(session, path)).json();
   if (body.status >= 400) {
     const detail = body.error && Object.keys(body.error).length ? `: ${JSON.stringify(body.error).slice(0, 200)}` : '';
     throw new Error(`Vodafone answered ${body.status} for /rest/${path.split('?')[0]}${detail}`);
@@ -172,17 +178,18 @@ export async function rest(session, path) {
   return body.data;
 }
 
+// One formatter for all timestamps: building one per call is ~40x slower, which shows on `events`.
+// "2026-10-01 14:58:44 GMT+02:00"
+const LOCAL = new Intl.DateTimeFormat('sv-SE', {
+  timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'longOffset',
+});
+
 /** epoch ms -> "2026-10-01" (Amsterdam) */
-const day = ms => ms == null ? null : new Date(ms).toLocaleDateString('sv-SE', { timeZone: TZ });
+const day = ms => ms == null ? null : LOCAL.format(ms).slice(0, 10);
 
 /** epoch ms -> "2026-10-01T14:58:44+02:00" (Amsterdam) */
-function localTime(ms) {
-  if (ms == null) return null;
-  const local = new Date(ms).toLocaleString('sv-SE', { timeZone: TZ }).replace(' ', 'T');
-  const offset = Math.round((Date.parse(`${local}Z`) - Math.floor(ms / 1000) * 1000) / 60_000);
-  const hhmm = `${String(Math.floor(Math.abs(offset) / 60)).padStart(2, '0')}:${String(Math.abs(offset) % 60).padStart(2, '0')}`;
-  return `${local}${offset < 0 ? '-' : '+'}${hhmm}`;
-}
+const localTime = ms => ms == null ? null : LOCAL.format(ms).replace(' ', 'T').replace(' GMT', '');
 
 /** "31612345678" / "+31612345678" / "0612345678" -> "+31612345678"; anything else as is. */
 function phone(s) {
@@ -195,7 +202,7 @@ function phone(s) {
 
 /** What the user typed as a number, as the API's "31612345678". */
 function msisdn(s) {
-  const d = s.replace(/[\s().-]/g, '').replace(/^\+/, '').replace(/^00/, '');
+  const d = String(s ?? '').replace(/[\s().-]/g, '').replace(/^\+/, '').replace(/^00/, '');
   if (/^0[1-9]\d{8}$/.test(d)) return `31${d.slice(1)}`;
   if (/^6\d{8}$/.test(d)) return `31${d}`;
   return d;
@@ -209,22 +216,25 @@ const UNITS = { K: ['MB', 1 / 1024, 2], S: ['min', 1 / 60, 1], O: ['count', 1, 0
 const EVENT_UNITS = { ...UNITS, S: ['s', 1, 0] };
 const TYPES = { V: 'voice', D: 'data', T: 'sms', M: 'money', O: 'other' };
 
-function quantity(value, unit, units = UNITS) {
-  const [name, factor, decimals] = units[unit] ?? [unit, 1, 2];
-  return { quantity: value == null ? null : round(+value * factor, decimals), unit: name };
+/** A converter for one API unit: {unit, of(value)}. */
+function measure(code, units = UNITS) {
+  const [unit, factor, decimals] = units[code] ?? [code, 1, 2];
+  return { unit, of: v => v == null ? null : round(+v * factor, decimals) };
+}
+
+function quantity(value, code, units) {
+  const m = measure(code, units);
+  return { quantity: m.of(value), unit: m.unit };
 }
 
 // ---------------------------------------------------------------------------
 // account / products / product
 // ---------------------------------------------------------------------------
 
-async function user(session) {
-  session.user ??= (await rest(session, 'my/account/authenticated-user'))[0];
-  return session.user;
-}
+const user = async session => (await rest(session, 'my/account/authenticated-user'))[0];
 
-const address = a => a && [[a.street ?? a.street_name, a.house_number].filter(Boolean).join(' '),
-  [a.zipcode ?? a.zip_code, a.city].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+const address = a => (a && [[a.street ?? a.street_name, a.house_number].filter(Boolean).join(' '),
+  [a.zipcode ?? a.zip_code, a.city].filter(Boolean).join(' ')].filter(Boolean).join(', ')) || null;
 
 export async function account(session) {
   const u = await user(session);
@@ -240,38 +250,33 @@ export async function account(session) {
         name: bc.primary_contact?.full_name ?? null,
         email: bc.primary_contact?.email ?? null,
         phone: phone(bc.primary_contact?.primary_phone),
-        address: address(bc.primary_contact?.address) || null,
+        address: address(bc.primary_contact?.address),
       },
     })),
   };
 }
 
 export async function products(session) {
-  if (session.products) return session.products;
-  const out = [];
-  for (const bc of (await user(session)).billing_customers ?? []) {
-    for (const p of await rest(session, `my/product/summary/${bc.billing_customer_id}`)) {
-      out.push({
-        number: phone(p.primary_msisdn),
-        productId: p.product_id,
-        billingCustomerId: bc.billing_customer_id,
-        plan: p.product_description,
-        type: p.label,
-        status: p.product_status,
-        user: p.primary_contact?.full_name ?? null,
-        dataOnly: p.is_data_only,
-        prepaid: p.is_prepaid,
-      });
-    }
-  }
-  return (session.products = out);
+  const perCustomer = await Promise.all(((await user(session)).billing_customers ?? []).map(async bc =>
+    (await rest(session, `my/product/summary/${bc.billing_customer_id}`)).map(p => ({
+      number: phone(p.primary_msisdn),
+      productId: p.product_id,
+      billingCustomerId: bc.billing_customer_id,
+      plan: p.product_description,
+      type: p.label,
+      status: p.product_status,
+      user: p.primary_contact?.full_name ?? null,
+      dataOnly: p.is_data_only,
+      prepaid: p.is_prepaid,
+    }))));
+  return perCustomer.flat();
 }
 
 /** A subscription by phone number (any common notation) or productId. */
 async function findProduct(session, which) {
   const list = await products(session);
-  const want = msisdn(String(which));
-  const p = list.find(p => p.productId === String(which) || p.number?.slice(1) === want);
+  const want = msisdn(which);
+  const p = list.find(p => p.productId === String(which) || msisdn(p.number) === want);
   if (!p) throw new Error(`No subscription ${which}; numbers: ${list.map(p => p.number).join(', ')}`);
   return p;
 }
@@ -308,14 +313,14 @@ export async function product(session, which) {
 // ---------------------------------------------------------------------------
 
 function bundle(a) {
-  const total = quantity(a.quota ?? a.initial_quota, a.unit_of_measurement);
+  const m = measure(a.unit_of_measurement);
   return {
     description: a.allowance_description,
-    unit: total.unit,
+    unit: m.unit,
     unlimited: !!a.is_unlimited_quota,
-    total: a.is_unlimited_quota ? null : total.quantity,
-    used: quantity(a.utilized_quota ?? 0, a.unit_of_measurement).quantity,
-    remaining: a.is_unlimited_quota ? null : quantity(a.remaining_quota, a.unit_of_measurement).quantity,
+    total: a.is_unlimited_quota ? null : m.of(a.quota ?? a.initial_quota),
+    used: m.of(a.utilized_quota ?? 0),
+    remaining: a.is_unlimited_quota ? null : m.of(a.remaining_quota),
     roaming: !!a.is_roaming,
     shared: !!(a.is_family_bundle || a.is_group_bundle),
   };
@@ -326,27 +331,27 @@ async function usageOf(session, p) {
   const bundles = (u.unbilled_allowances ?? []).flatMap(s => s.unbilled_allowances ?? [])
     .flatMap(o => (o.unbilled_allowances ?? []).map(a => ({ offer: o.offer_type, ...bundle(a) })));
   const daily = (u.daily_allowances ?? []).flatMap(o => o.daily_allowances ?? []).map(a => {
-    const q = x => quantity(x, a.unit_of_measurement).quantity;
+    const m = measure(a.unit_of_measurement);
     return {
       date: day(a.date_of_use),
       description: a.allowance_description,
       offer: a.offer_name,
-      unit: quantity(0, a.unit_of_measurement).unit,
-      total: q(a.initial_quota),
-      used: q(a.used_quota),
-      remaining: q(a.remaining_quota),
+      unit: m.unit,
+      total: m.of(a.initial_quota),
+      used: m.of(a.used_quota),
+      remaining: m.of(a.remaining_quota),
       roaming: !!a.is_roaming,
     };
   });
-  const usage = (u.usages_by_event_type ?? []).flatMap(t => (t.usages_by_message_code ?? []).map(m => ({ t, m })))
-    .filter(({ m }) => m.usage?.amount_of_events > 0)
-    .map(({ t, m }) => ({
+  const usage = (u.usages_by_event_type ?? []).flatMap(t => (t.usages_by_message_code ?? [])
+    .filter(m => m.usage?.amount_of_events > 0)
+    .map(m => ({
       type: TYPES[t.event_type] ?? t.event_type,
       description: m.usage.description ?? m.message_description,
       events: m.usage.amount_of_events,
       ...quantity((m.usage.accumulated_quantity ?? 0) + (m.usage.free_accumulated_quantity ?? 0), m.usage.unit_of_measurement),
       cost: euro(m.usage.accumulated_charge),
-    }));
+    })));
   return {
     number: p.number,
     plan: p.plan,
@@ -377,18 +382,18 @@ export async function usage(session, which) {
 // 5 s, then GETs …/download/{number}.
 // ---------------------------------------------------------------------------
 
+/** Every invoice as {bc, ba (billing arrangement), raw, res (its customer's whole answer)}, newest first. */
 async function invoiceList(session) {
-  if (session.invoices) return session.invoices;
-  const out = [];
-  for (const bc of (await user(session)).billing_customers ?? []) {
+  const perCustomer = await Promise.all(((await user(session)).billing_customers ?? []).map(async bc => {
     const [res] = await rest(session, `my/invoice/${bc.billing_customer_id}?lst=m`);
-    for (const i of [...res?.invoices_type_bill ?? [], ...res?.invoices_type_other ?? []]) {
-      out.push({ bc: bc.billing_customer_id, raw: i, res });
-    }
-  }
-  out.sort((a, b) => b.raw.creation_date - a.raw.creation_date);
-  return (session.invoices = out);
+    return [...res?.invoices_type_bill ?? [], ...res?.invoices_type_other ?? []]
+      .map(raw => ({ bc: bc.billing_customer_id, ba: raw.billing_arrangment_id /* sic */, raw, res }));
+  }));
+  return perCustomer.flat().sort((a, b) => b.raw.creation_date - a.raw.creation_date);
 }
+
+/** The query that names an invoice to the breakdown and events endpoints. */
+const invoiceQuery = inv => ({ billing_arrangement_id: inv.ba, invoice_id: inv.raw.number, invoice_close_date: inv.raw.close_date });
 
 async function findInvoice(session, number) {
   if (!/^\d+$/.test(number)) throw new Error('invoiceNumber must be the numeric invoiceNumber from `invoices`');
@@ -410,7 +415,7 @@ export async function invoices(session) {
       payment: a.pay_means?.payment_type ?? null,
       iban: a.pay_means?.bank_account_number ?? null, // masked by Vodafone
       delivery: a.delivery_options?.bill_delivery_method ?? null,
-      address: address(a.invoice_address) || null,
+      address: address(a.invoice_address),
       numbers: a.subscriber_count,
     })),
     invoices: list.map(({ raw: i }) => ({
@@ -434,15 +439,8 @@ export async function invoices(session) {
   };
 }
 
-async function charges(session, inv) {
-  const q = new URLSearchParams({
-    billing_arrangement_id: inv.raw.billing_arrangment_id, // sic
-    invoice_id: inv.raw.number,
-    invoice_close_date: inv.raw.close_date,
-  });
-  inv.charges ??= (await rest(session, `my/invoice/charges/${inv.bc}?${q}`))[0];
-  return inv.charges;
-}
+const charges = async (session, inv) =>
+  (await rest(session, `my/invoice/charges/${inv.bc}?${new URLSearchParams(invoiceQuery(inv))}`))[0];
 
 export async function invoice(session, number) {
   const inv = await findInvoice(session, number);
@@ -488,16 +486,13 @@ export async function invoice(session, number) {
 
 export async function downloadPdf(session, number, file = `${number}.pdf`) {
   const inv = await findInvoice(session, number);
-  const base = `my/invoice/${inv.bc}/billing-arrangement/${inv.raw.billing_arrangment_id}`;
+  const base = `my/invoice/${inv.bc}/billing-arrangement/${inv.ba}`;
   for (let attempt = 1; !(await rest(session, `${base}/is-pdf-invoice-available/${number}`))[0]?.is_pdf_invoice_available; attempt++) {
     if (attempt === 10) throw new Error(`Invoice ${number}: Vodafone did not have the PDF ready after 50 s`);
-    await new Promise(r => setTimeout(r, 5000));
+    await sleep(5000);
   }
-  const r = await http(`${REST}/${base}/download/${number}`, {
-    headers: { 'User-Agent': UA, Authorization: `Bearer ${session.token}` },
-  });
-  const pdf = Buffer.from(await r.arrayBuffer());
-  if (!r.ok || pdf.subarray(0, 4).toString() !== '%PDF') throw new Error(`Invoice ${number}: HTTP ${r.status}, not a PDF`);
+  const pdf = Buffer.from(await (await get(session, `${base}/download/${number}`, '*/*')).arrayBuffer());
+  if (pdf.subarray(0, 4).toString() !== '%PDF') throw new Error(`Invoice ${number}: the download is not a PDF`);
   writeFileSync(file, pdf);
   return { file, bytes: pdf.length };
 }
@@ -511,48 +506,41 @@ export async function downloadPdf(session, number, file = `${number}.pdf`) {
 
 const EVENT_TYPES = { voice: 'V', data: 'D', sms: 'T' };
 const BUNDLE = { B: 'in', P: 'partly', O: 'outside' };
+const PAGE = 1000;
 
 export async function events(session, number, which, type) {
   if (type && !EVENT_TYPES[type]) throw new Error(`Type must be one of ${Object.keys(EVENT_TYPES).join(', ')}`);
   const inv = await findInvoice(session, number);
-  const c = await charges(session, inv);
-  const want = msisdn(String(which));
-  const sub = (c.subscriber_charges_summaries ?? []).find(s => s.primary_msisdn === want);
+  const subscribers = (await charges(session, inv)).subscriber_charges_summaries ?? [];
+  const want = msisdn(which);
+  const sub = subscribers.find(s => msisdn(s.primary_msisdn) === want);
   if (!sub) {
-    const numbers = (c.subscriber_charges_summaries ?? []).map(s => phone(s.primary_msisdn)).join(', ');
-    throw new Error(`Number ${which} is not on invoice ${number}; it has ${numbers}`);
+    throw new Error(`Number ${which} is not on invoice ${number}; it has ${subscribers.map(s => phone(s.primary_msisdn)).join(', ')}`);
   }
-  const out = [];
-  for (const t of type ? [EVENT_TYPES[type]] : Object.values(EVENT_TYPES)) {
+  // The types are independent requests; pages within a type follow total_results.
+  const perType = await Promise.all((type ? [EVENT_TYPES[type]] : Object.values(EVENT_TYPES)).map(async t => {
+    const out = [];
     for (let page = 1; ; page++) {
       const q = new URLSearchParams({
-        billing_arrangement_id: inv.raw.billing_arrangment_id,
-        invoice_id: number,
-        invoice_close_date: inv.raw.close_date,
-        subscriber_id: sub.subscriber_id,
-        page_size: 1000,
-        page_number: page,
-        event_type: t,
+        ...invoiceQuery(inv), subscriber_id: sub.subscriber_id, page_size: PAGE, page_number: page, event_type: t,
       });
       const [res] = await rest(session, `my/invoice/charged-events/${inv.bc}?${q}`);
       const rows = res?.charged_events ?? [];
-      for (const e of rows) {
-        out.push({
-          time: localTime(e.start_time),
-          type: TYPES[t],
-          to: phone(e.destination_number) || null,
-          country: e.destination_country_name || null,
-          from: e.originator_country_name || null,
-          ...quantity(e.volume, e.unit_of_measurement, EVENT_UNITS),
-          cost: e.charge_amount,
-          bundle: BUNDLE[e.bundle_ind] ?? e.bundle_ind ?? null,
-          offer: e.offer_name || null,
-        });
-      }
-      if (!rows.length || page * 1000 >= (res.total_results ?? 0)) break;
+      out.push(...rows.map(e => ({
+        time: localTime(e.start_time),
+        type: TYPES[t],
+        to: phone(e.destination_number) || null,
+        country: e.destination_country_name || null,
+        from: e.originator_country_name || null,
+        ...quantity(e.volume, e.unit_of_measurement, EVENT_UNITS),
+        cost: e.charge_amount,
+        bundle: BUNDLE[e.bundle_ind] ?? e.bundle_ind ?? null,
+        offer: e.offer_name || null,
+      })));
+      if (!rows.length || page * PAGE >= (res.total_results ?? 0)) return out;
     }
-  }
-  return out.sort((a, b) => a.time.localeCompare(b.time));
+  }));
+  return perType.flat().sort((a, b) => a.time.localeCompare(b.time));
 }
 
 // ---------------------------------------------------------------------------

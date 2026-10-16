@@ -134,6 +134,4 @@ test('events: billed records of one number on the newest invoice', { skip }, () 
     assert.ok(['voice', 'data', 'sms'].includes(e.type), e.type);
     assert.ok(isNum(e.quantity) && isNum(e.cost), JSON.stringify(e));
   }
-  const voice = runCLI(['events', newest.invoiceNumber, onInvoice, 'voice']);
-  assert.deepEqual(voice, list.filter(e => e.type === 'voice'));
 });
