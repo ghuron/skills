@@ -17,43 +17,34 @@ dependencies that prints JSON or writes CSV, plus a `SKILL.md` that tells the ag
 
 ## Install
 
-Any agent, with the [skills CLI](https://skills.sh):
+All skills need Node.js 22 or later. With the [skills CLI](https://skills.sh), for any agent:
 
 ```bash
 npx skills add ghuron/skills                    # pick skills and agents interactively
 npx skills add ghuron/skills --skill magister   # just one
 ```
 
-Claude Code, from this repo's plugin marketplace (each skill is its own plugin):
+In Claude Code, from this repo's plugin marketplace, where each skill is a plugin of the same name:
 
 ```
 /plugin install magister --marketplace ghuron/skills
-/plugin install ovpay --marketplace ghuron/skills
-/plugin install htm --marketplace ghuron/skills
-/plugin install budgetthuis --marketplace ghuron/skills
-/plugin install abn-amro --marketplace ghuron/skills
-/plugin install ah --marketplace ghuron/skills
-/plugin install epson --marketplace ghuron/skills
 ```
 
-On Claude Code older than 2.1.275, add the marketplace first with `/plugin marketplace add ghuron/skills`,
-then install with `/plugin install magister@ghuron-skills`.
+On Claude Code older than 2.1.275, first run `/plugin marketplace add ghuron/skills`, then
+`/plugin install magister@ghuron-skills`.
 
 Or copy `<name>/` into your agent's skills directory, such as `~/.claude/skills/<name>/`.
 
-All skills need Node.js 22 or later.
-
 ## Credentials
 
-Skills that log in read credentials from environment variables. Set them where your agent runs, or,
-if your agent uses the skills straight from a clone of this repo, put them in a `.env` file in the
-skill's folder (`htm/.env`); variables already set in the environment take precedence. A
-`.env` put into an installed copy is lost when `npx skills` updates the skill.
+Skills that log in read credentials from environment variables. If your agent runs the skills from
+a clone of this repo, they can also go in a `.env` in the skill's folder (`htm/.env`); the
+environment wins. A `.env` in an installed copy is lost when `npx skills` updates the skill.
 
 | Skill | Variables |
 |---|---|
 | magister | `MAGISTER_HOST` (your school, e.g. `myschool.magister.net`), `MAGISTER_USER`, `MAGISTER_PASSWORD` |
-| ovpay | `OVPAY_REFRESH_TOKEN` (seed; see the skill), optional `OVPAY_STATE` |
+| ovpay | `OVPAY_REFRESH_TOKEN` (seed token, or run `login` once instead), optional `OVPAY_STATE`, `OVPAY_EMAIL`, `OVPAY_PASSWORD` |
 | htm | `HTM_LOGIN`, `HTM_PASSWORD`, optional `HTM_BIRTHDATE_<tokenId>` |
 | budgetthuis | `BUDGETTHUIS_LOGIN`, `BUDGETTHUIS_PASSWORD` |
 | epson | `EPSON_HOST` |
@@ -63,7 +54,7 @@ is the rotating OVpay token, in `~/.ovpay/tokens.json` by default.
 
 ## What the skills change
 
-Almost everything is read-only. The exceptions, each documented in its `SKILL.md`:
+The skills only read from the services, except:
 
 - `magister report-sick` reports a child sick at school (parent accounts, today or tomorrow only).
 - `htm reorder` puts a product in the HTM cart. It never pays; you finish checkout in a browser.
@@ -72,9 +63,8 @@ Almost everything is read-only. The exceptions, each documented in its `SKILL.md
 ## Disclaimer
 
 These are unofficial tools, not affiliated with or endorsed by Magister, OVpay, HTM, Budget Thuis,
-ABN AMRO, Albert Heijn or Epson. They use the same, undocumented APIs as the services' own websites
-and apps, which can change without notice. The skills that talk to a service have integration tests
-that run against real accounts to catch that.
+ABN AMRO, Albert Heijn or Epson. They use the same undocumented APIs as the services' own websites
+and apps, which can change without notice; integration tests against real accounts catch that.
 
 ## Repository layout
 

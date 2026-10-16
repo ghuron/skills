@@ -10,24 +10,16 @@ compatibility: "Requires Node.js 22+, Python 3 and pypdf (pip install pypdf). Wo
 node ah.mjs csv [--force] [--out <dir>] <pdf|dir>...   # invoice PDFs -> <order number>.csv
 ```
 
-Needs `pypdf` (`pip install pypdf`).
-
-Writes each order to `<order number>.csv` in `--out`, or next to its PDF. An order that already has a
-CSV is skipped so notes added to it survive; `--force` rewrites it. Stops on any invoice line it
-does not recognise, and when the lines don't add up to the invoice total.
+A directory means every `*.pdf` in it. Each order goes to `<order number>.csv` in `--out`, or next to
+its PDF. An existing CSV is skipped so notes added to it survive; `--force` rewrites it. Stops on an
+invoice line it doesn't recognise, or when the lines don't add up to the invoice total.
 
 # Output
 
-UTF-8, CRLF, one row per invoice line, dot decimals:
+UTF-8, CRLF, dot decimals, one row per invoice line; `Total (EUR)` includes VAT. Deposits, bags and
+corrections have their heading in front of `Item` (`Statiegeld: AH Klapkrat`, `Statiegeld retour:
+Petfles 0.25`, `Verpakkingsmateriaal: Plastic tasje(s)`). `Note` holds the single-use plastic levy a
+line includes, if any, and is free for your own notes.
 
-| Column | |
-|---|---|
-| `Item` | Product name as printed, without the `BONUS` marker. Deposits, bags and corrections are prefixed with their heading: `Statiegeld: AH Klapkrat`, `Statiegeld retour: Petfles 0.25`, `Verpakkingsmateriaal: Plastic tasje(s)` |
-| `Quantity` | Count, or empty when the invoice prints none (delivery costs) |
-| `VAT (%)` | `9`, `21`, or `0` for lines without VAT (`Geen`) |
-| `Total (EUR)` | Line total including VAT. Deposit refunds and free-delivery offers are negative |
-| `Bonus` | `Yes` when the line was a Bonus offer |
-| `Note` | The single-use plastic levy a line includes, if any. Free for your own notes |
-
-The order number is the file name, not a column. The invoice's payment and delivery dates are left
-out: the bank rows that pay for the order carry its number.
+There are no date or order-number columns: the order number is the file name, and the bank row that
+paid for the order carries it.
