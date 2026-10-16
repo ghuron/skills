@@ -8,7 +8,7 @@ dependencies that prints JSON or writes CSV, plus a `SKILL.md` that tells the ag
 | Skill | What the agent can do | Needs |
 |---|---|---|
 | [magister](magister/SKILL.md) | Magister school portal: timetable with homework and tests, grades, absences, messages, report a child sick | School host, username, password |
-| [ovpay](ovpay/SKILL.md) | OVpay public transport: cards, balances, trip history with fares, CSV export | OVpay token (one-time login with `playwright`) |
+| [ovpay](ovpay/SKILL.md) | OVpay public transport: cards, balances, trip history with fares, CSV export | OVpay token (one-time login with email code) |
 | [htm](htm/SKILL.md) | HTM (Den Haag) public transport: passes, products, trips, Regio Vrij advice, renew a product into the cart | Mijn HTM login |
 | [budgetthuis](budgetthuis/SKILL.md) | Budget Thuis energy: tariffs, contract, monthly instalment and advice, invoices (PDF), hourly to monthly electricity and gas usage with costs | MijnBudget login |
 | [abn-amro](abn-amro/SKILL.md) | ABN AMRO transaction export (.TAB) to CSV, counterparty and IBAN split out | Nothing, works offline |

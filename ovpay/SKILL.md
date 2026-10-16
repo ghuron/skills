@@ -2,7 +2,7 @@
 name: ovpay
 description: "Read an OVpay account (check in and out with a bank card or OV-pas on Dutch public transport: trains, trams, buses, metro; ovpay.nl): cards, balances, profile and full trip history with fares, and export trips to CSV, for example for expense claims or travel-cost overviews. Use when the user asks about Dutch public transport trips, OV costs, check-ins and check-outs, or OVpay travel history."
 license: MIT-0
-compatibility: "Requires Node.js 22+ and network access to api.ovpay.app. Seed token via OVPAY_REFRESH_TOKEN; the rotating token is kept in OVPAY_STATE (default ~/.ovpay/tokens.json). The one-time login command needs playwright. Variables can also go in a .env file in the skill folder; variables already set in the environment take precedence."
+compatibility: "Requires Node.js 22+ and network access to api.ovpay.app and api.identity.ovpay.app (login.ovpay.nl for `login`). Seed token via OVPAY_REFRESH_TOKEN; the rotating token is kept in OVPAY_STATE (default ~/.ovpay/tokens.json). Variables can also go in a .env file in the skill folder; variables already set in the environment take precedence."
 ---
 # Commands
 
@@ -13,7 +13,7 @@ node ovpay.mjs trips <card> [from] [to]            # trips; card = name or xtat;
 node ovpay.mjs export <card> <file.csv> [from] [to]  # trips to CSV
 node ovpay.mjs get <path>                          # raw GET against https://api.ovpay.app
 node ovpay.mjs secure <card>                        # enable SecureTat on a card (one-time email OTP)
-node ovpay.mjs login                               # one-time browser login (needs playwright)
+node ovpay.mjs login                               # one-time login (asks for the emailed code)
 ```
 
 All commands print JSON to stdout (`export` writes the file and prints `{file, trips}`).
@@ -32,8 +32,8 @@ Uses the OVpay mobile app's **offline** token: log in once, then every call is h
 email code. The token lives in `OVPAY_STATE` (default `~/.ovpay/tokens.json`); on first use it is
 seeded from `OVPAY_REFRESH_TOKEN`. It **rotates on every refresh** (the previous token is
 invalidated), so the newest one is always written back to `OVPAY_STATE` — keep that file persistent.
-`login` (re)creates it when it finally expires (~30 days idle); it drives a real browser (needs
-`playwright`) because the login page is WAF-protected, and asks for the emailed 6-digit code.
+`login` (re)creates it when it finally expires (~30 days idle): it signs in with `OVPAY_EMAIL` and
+`OVPAY_PASSWORD` over plain HTTP and asks for the emailed 6-digit code.
 
 # SecureTat (trips of secured cards)
 

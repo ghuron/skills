@@ -21,10 +21,9 @@
  * api.ovpay.nl) gets a 60-minute token with no working refresh; the app's
  * (ovpayAppClient, api.ovpay.app) gets an offline token valid ~30 days that
  * slides and rotates. A token for one host is rejected (403) by the other.
- * A WAF (Link11) blocks non-browser clients on login.ovpay.nl and www.ovpay.nl
- * (HTTP 473), and Keycloak's own /token answers 502 to everyone but OVpay's
- * backend, but api.ovpay.app and api.identity.ovpay.app are not behind it, so
- * plain fetch works for everything except `login`.
+ * Keycloak's own /token answers 502 to everyone but OVpay's backend, so token
+ * exchange and refresh go through api.identity.ovpay.app. Everything, `login`
+ * included, is plain fetch: no browser.
  *
  * Usage: node ovpay.mjs <command> [args]
  *   cards                              list cards (name, balance, status, xtat)
@@ -33,7 +32,7 @@
  *   export <card> <file.csv> [from] [to]   write trips to CSV
  *   get <path>                         raw GET against https://api.ovpay.app
  *   secure <card>                      enable SecureTat on a card (one-time email OTP)
- *   login                              one-time browser login -> prints & stores the offline token
+ *   login                              one-time login (email code) -> stores the offline token
  */
 import { fileURLToPath } from 'url';
 import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync } from 'fs';
@@ -46,7 +45,7 @@ const ENV_FILE = new URL('.env', import.meta.url);
 if (existsSync(ENV_FILE)) process.loadEnvFile(ENV_FILE);
 
 // Token exchange and refresh go through this identity proxy, which makes the
-// WAF-blocked Keycloak /token call server-side.
+// Keycloak /token call server-side.
 const IDENTITY = 'https://api.identity.ovpay.app/api/external/v1/Identity';
 const API = 'https://api.ovpay.app';
 const FLOW = 'App';
@@ -220,7 +219,7 @@ export function tripsCsv(list) {
 }
 
 // --------------------------------------------------------------------------- //
-// SecureTat enrollment + browser login (interactive bootstrap)
+// SecureTat enrollment + login (interactive bootstrap)
 // --------------------------------------------------------------------------- //
 function ask(prompt) {
   const rl = createInterface({ input: process.stdin, output: process.stderr });
@@ -238,16 +237,43 @@ export async function secure(card, codeCb = () => ask('6-digit email code: ')) {
   return { secured: true };
 }
 
-// The WAF runs a JavaScript challenge on the login page, so this drives headless
-// Chromium. The proxy's retrieve-token is multipart/form-data and needs
-// authorization_flow=App: without it the proxy exchanges as the web client and
-// Keycloak answers "Found different client_id in clientSession", which looks
-// like a PKCE or redirect bug.
-export async function login({ email, password, codeCb } = {}) {
-  let chromium;
-  try { ({ chromium } = await import('playwright')); }
-  catch { throw new Error('`login` needs playwright: npm i playwright && npx playwright install chromium'); }
+// Keycloak's login pages are plain HTML forms, so this is fetch with a cookie
+// jar: GET the authorization URL, POST e-mail and password, POST the emailed
+// code, and read the code from the final redirect to ovpay://auth. The login
+// host sits behind a WAF (Link11), but plain fetch passes it; the WAF adds a
+// passive JavaScript challenge only to the page after a failed attempt. The
+// proxy's retrieve-token is multipart/form-data and needs authorization_flow=App:
+// without it the proxy exchanges as the web client and Keycloak answers "Found
+// different client_id in clientSession", which looks like a PKCE or redirect bug.
+const unescape = s => s.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+const attr = (tag, name) => tag.match(new RegExp(`\\s${name}="([^"]*)"`))?.[1];
 
+// The form whose HTML contains `marker` (an input id), as {action, fields}:
+// every named input with its default value, as a browser would submit it.
+// Submit buttons are left out like a script's form.submit() does: the code
+// form has a hidden <input name="resend" type="submit">, and sending it makes
+// Keycloak mail a new code instead of checking this one.
+function parseForm(html, marker) {
+  const form = (html.match(/<form[\s\S]*?<\/form>/g) || []).find(f => f.includes(`id="${marker}"`));
+  if (!form) return null;
+  const fields = {};
+  for (const tag of form.match(/<input[^>]*>/g) || []) {
+    const name = attr(tag, 'name');
+    if (name && attr(tag, 'type') !== 'submit') fields[name] = unescape(attr(tag, 'value') || '');
+  }
+  const codeName = attr(form.match(new RegExp(`<input[^>]*id="${marker}"[^>]*>`))[0], 'name');
+  return { action: unescape(attr(form.match(/<form[^>]*>/)[0], 'action')), fields, codeName };
+}
+
+function pageError(html) {
+  for (const re of [/kc-feedback-text">([^<]*)/, /input-error[^>]*>\s*([^<]*)/, /<title>([^<]*)/]) {
+    const m = html.match(re);
+    if (m && m[1].trim()) return unescape(m[1].trim());
+  }
+  return 'unexpected page';
+}
+
+export async function login({ email, password, codeCb } = {}) {
   email ||= process.env.OVPAY_EMAIL || await ask('OVpay email: ');
   password ||= process.env.OVPAY_PASSWORD || await ask('OVpay password: ');
   codeCb ||= () => ask('6-digit email code: ');
@@ -262,46 +288,53 @@ export async function login({ email, password, codeCb } = {}) {
     body: JSON.stringify({ authorizationFlow: FLOW, codeChallenge: challenge, codeChallengeMethod: 'S256' }),
   })).json()).redirectUri;
 
-  const cap = {};
-  const exchange = async (code) => {
-    const boundary = '----ovpay' + randomBytes(8).toString('hex');
-    const parts = { authorization_flow: FLOW, code, code_verifier: verifier };
-    const body = Object.entries(parts)
-      .map(([k, v]) => `--${boundary}\r\nContent-Disposition: form-data; name="${k}"\r\n\r\n${v}\r\n`)
-      .join('') + `--${boundary}--\r\n`;
-    const r = await fetch(`${IDENTITY}/retrieve-token`, {
-      method: 'POST', headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}` }, body });
-    cap.status = r.status; cap.tok = r.status === 200 ? await r.json() : await r.text();
-  };
-
-  const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
-  const ctx = await browser.newContext({ viewport: { width: 460, height: 860 } });
-  const grab = (u) => {
-    if (u && u.startsWith('ovpay://') && !cap.code) {
-      const code = new URL(u).searchParams.get('code');
-      if (code) { cap.code = code; return exchange(code); }
+  // Every page is on login.ovpay.nl, so one name -> value map is the whole jar.
+  const jar = new Map();
+  // Follows redirects by hand to keep cookies and to stop at ovpay://, which
+  // fetch cannot follow. Returns {code} at the app redirect, else {html, url}.
+  async function step(url, form) {
+    let init = form && { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(form) };
+    for (let hops = 0; hops < 10; hops++) {
+      const cookie = [...jar].map(([k, v]) => `${k}=${v}`).join('; ');
+      const r = await fetch(url, { ...init, headers: { ...init?.headers, Cookie: cookie }, redirect: 'manual' });
+      for (const c of r.headers.getSetCookie()) {
+        const [, k, v] = c.match(/^([^=]+)=([^;]*)/);
+        if (v && !/max-age=0/i.test(c)) jar.set(k, v); else jar.delete(k);
+      }
+      const loc = r.headers.get('location');
+      if (!loc) return { html: await r.text(), url };
+      if (loc.startsWith('ovpay://')) {
+        const u = new URL(loc);
+        const code = u.searchParams.get('code');
+        if (!code) throw new Error(`login failed: ${u.searchParams.get('error_description') || loc}`);
+        return { code };
+      }
+      url = new URL(loc, url).href;
+      init = undefined;
     }
-  };
-  ctx.on('response', r => grab(r.headers()['location'] || ''));
-  ctx.on('request', r => grab(r.url()));
-  const page = await ctx.newPage();
-  await page.goto(authz, { waitUntil: 'domcontentloaded', timeout: 40000 });
-  await page.fill('#username', email);
-  await page.fill('#password', password);
-  await page.click('#kc-login');
-  await page.waitForSelector('#emailCode', { timeout: 120000 }).catch(() => {});
-  if (!cap.code) {
-    const otp = await codeCb();
-    await page.fill('#emailCode', otp).catch(() => {});       // auto-submits on 6th digit, navigating away mid-fill
-    await page.click('#submit-btn').catch(() => {});
+    throw new Error('login failed: too many redirects');
   }
-  const end = Date.now() + 120000;
-  while (Date.now() < end && !cap.tok) await page.waitForTimeout(300).catch(() => {});
-  await browser.close();
 
-  if (cap.status !== 200) throw new Error(`login failed: ${JSON.stringify(cap.tok).slice(0, 200)}`);
-  saveTokens(cap.tok);
-  return cap.tok;
+  let res = await step(authz);
+  const creds = res.html && parseForm(res.html, 'username');
+  if (!creds) throw new Error(`login failed: no login form (${pageError(res.html || '')})`);
+  res = await step(new URL(creds.action, res.url).href, { ...creds.fields, username: email, password });
+  if (!res.code) {
+    const otp = parseForm(res.html, 'emailCode');
+    if (!otp) throw new Error(`login failed: ${pageError(res.html)}`);
+    res = await step(new URL(otp.action, res.url).href, { ...otp.fields, [otp.codeName]: await codeCb() });
+    if (!res.code) throw new Error(`login failed: ${pageError(res.html)}`);
+  }
+
+  const body = new FormData();
+  Object.entries({ authorization_flow: FLOW, code: res.code, code_verifier: verifier })
+    .forEach(([k, v]) => body.append(k, v));
+  const r = await fetch(`${IDENTITY}/retrieve-token`, { method: 'POST', body });
+  if (r.status !== 200) throw new Error(`login failed: retrieve-token -> ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  const tok = await r.json();
+  saveTokens(tok);
+  return tok;
 }
 
 // --------------------------------------------------------------------------- //
