@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Bootstrap a fresh Linux machine (Node already installed).
-# Only required interaction: browser sign-in during `infisical login`.
+# Only required interaction: browser sign-in during `infisical login`, skipped when a machine identity's
+# INFISICAL_UNIVERSAL_AUTH_CLIENT_ID and _CLIENT_SECRET are set.
 set -euo pipefail
 
 CI="$(cd "$(dirname "$0")" && pwd)"
@@ -13,8 +14,10 @@ if ! grep -qF '$HOME/.local/node_modules/.bin' ~/.bashrc; then
 fi
 export PATH="$HOME/.local/node_modules/.bin:$PATH"
 
-echo "==> Logging in to Infisical — your browser will open"
-infisical login
+if [ -z "${INFISICAL_UNIVERSAL_AUTH_CLIENT_ID:-}" ]; then
+  echo "==> Logging in to Infisical — your browser will open"
+  infisical login
+fi
 
 bash "$CI/pull-secrets.sh"
 

@@ -9,7 +9,8 @@ CLAUDE="${HOME}/.local/node_modules/.bin/claude"
 
 cd "$REPO"
 git pull
-bash "$CI/pull-secrets.sh"
+# Sourced so its INFISICAL_TOKEN reaches the tests (ovpay writes its rotated token back to the vault)
+source "$CI/pull-secrets.sh"
 
 run_tests() {
   node --test "$1"/*.test.mjs

@@ -6,7 +6,15 @@ set -euo pipefail
 INFISICAL_PROJECT_ID="d56a074c-446e-466b-a6ba-91284fe0a42b"
 INFISICAL_DOMAIN="https://eu.infisical.com/api"
 INFISICAL_ENV="dev"
-REPO="$(cd "$(dirname "$0")/.." && pwd)"
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# With a machine identity's INFISICAL_UNIVERSAL_AUTH_CLIENT_ID and _CLIENT_SECRET set (cron env, GitHub
+# secrets), log in without a browser; INFISICAL_TOKEN is then used by every later infisical call. Without
+# them the CLI uses the session from an interactive `infisical login`.
+if [ -z "${INFISICAL_TOKEN:-}" ] && [ -n "${INFISICAL_UNIVERSAL_AUTH_CLIENT_ID:-}" ]; then
+  INFISICAL_TOKEN=$(infisical login --method=universal-auth --domain="$INFISICAL_DOMAIN" --silent --plain)
+  export INFISICAL_TOKEN
+fi
 
 infisical_path() {
   infisical export \
