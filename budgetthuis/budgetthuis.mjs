@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 /**
  * Budget Thuis energy (budgetthuis.nl, "MijnBudget Energie") CLI wrapper —
- * reads credentials from environment variables: BUDGETTHUIS_LOGIN, BUDGETTHUIS_PASSWORD
+ * reads the session from BUDGETTHUIS_SESSION (set by `login`); BUDGETTHUIS_LOGIN is the
+ * account's email address, used only by `login`
  *
  * Usage: node budgetthuis.mjs <command> [args]
  *
  * Commands:
+ *   login                            email a login link to BUDGETTHUIS_LOGIN
+ *   login <link>                     sign in with that link; saves BUDGETTHUIS_SESSION to .env
  *   account                          customer number, name, address, masked contact/bank details
  *   contracts                        contracts: id, status, start, duration, supply address
  *   tariffs                          current contract terms and tariffs (per kWh / m³ / month)
@@ -17,31 +20,36 @@
  */
 
 import { fileURLToPath } from 'url';
-import { existsSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
 
 // Credentials may also sit in a .env next to this file; variables already set win.
 const ENV_FILE = new URL('.env', import.meta.url);
 if (existsSync(ENV_FILE)) process.loadEnvFile(ENV_FILE);
 
 const LOGIN = process.env.BUDGETTHUIS_LOGIN;
-const PASSWORD = process.env.BUDGETTHUIS_PASSWORD;
 
 const PORTAL = 'https://mijn.budgetthuis.nl';
+const ACCOUNTS = 'https://accounts.budgetthuis.nl';
+const SESSION_COOKIE = '.AspNetCore.Identity.Application';
 const API = 'https://api.budgetthuis.nl/energy/v1';
 const APP_API = 'https://app.api.nutsservices.nl/energy/v1'; // the Budget Thuis app's backend
 const UA = 'Mozilla/5.0';
 
 // ---------------------------------------------------------------------------
-// Login (Duende IdentityServer at accounts.budgetthuis.nl, plain HTML form)
+// Login (Duende IdentityServer at accounts.budgetthuis.nl)
 //
-//   1. GET  mijn.budgetthuis.nl/energie/overzicht  -> redirects to /connect/authorize
-//                                                    -> /inloggen (form + antiforgery)
-//   2. POST accounts.budgetthuis.nl/inloggen       -> 302 to /connect/authorize/callback
-//   3. follow redirects back to /energie/overzicht -> portal session cookie
+// There is no password login: /inloggen sends everyone to /inloglink-aanvragen, which
+// emails a "Direct inloggen" link (a links.budgetthuis.nl click-tracking redirect to
+// mijn.budgetthuis.nl/autologin/general_auto_login/?token=…&email=…). The link works
+// for 30 days, more than once, and without the cookies of the browser that asked for
+// it. Following it signs in at accounts.budgetthuis.nl, which sets the persistent
+// .AspNetCore.Identity.Application cookie (90 days). That cookie is the session:
+// with it, GET /energie/overzicht -> /connect/authorize -> /energie/oidc/return lands
+// back on the portal without a form; without it (or once expired), authorize ends on
+// /inloglink-aanvragen. A newer login does not end older sessions.
 //
 // The portal is the confidential OIDC client, so there is no PKCE or JavaScript
-// on our side. A wrong password returns the form again with HTTP 200 and a
-// div.validation-error.
+// on our side.
 //
 // Every /energie page then embeds the customer's relationId (a hidden input
 // holding the Klantnummer, not the JWT's contact_person claim) and, in the chat
@@ -90,35 +98,26 @@ async function http(url, init) {
   }
 }
 
-/**
- * Log in and return {cookie, relationId, token}. The portal's OIDC callback
- * occasionally answers 500, so the whole flow is retried, except when the
- * credentials themselves are rejected: retrying those could lock the account.
- */
-export async function login(user = LOGIN, password = PASSWORD) {
-  for (let attempt = 1; ; attempt++) {
-    try {
-      return await loginOnce(user, password);
-    } catch (e) {
-      if (e.rejected || attempt === 3) throw e;
-    }
-  }
-}
-
-async function loginOnce(user, password) {
+/** A fetch that keeps cookies per host and follows redirects across hosts, like a browser. */
+function browser() {
   const jars = new Map(); // host -> Map(name -> value)
+  const expiry = new Map(); // cookie name -> Date, from Set-Cookie's Expires
   const jar = host => jars.get(host) ?? jars.set(host, new Map()).get(host);
+  const cookies = host => [...jar(host)].map(([k, v]) => `${k}=${v}`).join('; ');
   const request = async (url, init = {}) => {
     const { host } = new URL(url);
     const r = await http(url, {
       ...init,
       redirect: 'manual',
-      headers: { 'User-Agent': UA, ...init.headers, Cookie: [...jar(host)].map(([k, v]) => `${k}=${v}`).join('; ') },
+      headers: { 'User-Agent': UA, ...init.headers, Cookie: cookies(host) },
     });
     for (const sc of r.headers.getSetCookie()) {
-      const kv = sc.split(';', 1)[0];
+      const [kv, ...attrs] = sc.split(';');
       const eq = kv.indexOf('=');
-      jar(host).set(kv.slice(0, eq).trim(), kv.slice(eq + 1).trim());
+      const name = kv.slice(0, eq).trim();
+      jar(host).set(name, kv.slice(eq + 1).trim());
+      const expires = attrs.find(a => /^\s*expires=/i.test(a));
+      if (expires) expiry.set(name, new Date(expires.slice(expires.indexOf('=') + 1)));
     }
     return r;
   };
@@ -130,41 +129,89 @@ async function loginOnce(user, password) {
     }
     return { r, url, html: await r.text() };
   };
+  return { jar, expiry, cookies, follow };
+}
 
-  // Step 1: the portal redirects to the IdentityServer login form.
-  const form = await follow(`${PORTAL}/energie/overzicht`);
-  if (!new URL(form.url).pathname.startsWith('/inloggen')) {
-    throw new Error(`Login flow changed: expected the login form, landed on ${form.url}`);
+/** `login`, step 1: have Budget Thuis email a login link to `email`. */
+export async function requestLink(email = LOGIN) {
+  if (!email) throw new Error("Set BUDGETTHUIS_LOGIN to the account's email address.");
+  const b = browser();
+  const form = await b.follow(`${PORTAL}/energie/overzicht`);
+  if (new URL(form.url).pathname !== '/inloglink-aanvragen') {
+    throw new Error(`Login flow changed: expected the login-link form, landed on ${form.url.split('?')[0]}`);
   }
   const field = name => decode(extract(form.html, new RegExp(`name="${name}"[^>]*value="([^"]*)"`), name));
-
-  // Step 2: post the credentials.
-  const posted = await request(new URL('/inloggen', form.url).href, {
+  const sent = await b.follow(new URL('/inloglink-aanvragen', form.url).href, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       ReturnUrl: field('ReturnUrl'),
       Label: field('Label'),
-      Username: user,
-      Password: password,
-      button: 'login',
+      EmailAddress: email,
       __RequestVerificationToken: field('__RequestVerificationToken'),
     }).toString(),
   });
-  if (posted.status !== 302) {
-    const err = (await posted.text()).match(/class="validation-error[^"]*">([\s\S]*?)<\/div>/);
-    if (!err) throw new Error(`Login flow changed: HTTP ${posted.status} from /inloggen without an error message`);
-    throw Object.assign(new Error(`Login failed: ${text(err[1])}`), { rejected: true });
+  if (new URL(sent.url).pathname !== '/inloglink-verzonden') {
+    throw new Error(`Login flow changed: HTTP ${sent.r.status} ${sent.url.split('?')[0]} after asking for a login link`);
   }
+  return { sent: email, next: 'run `login <link>` with the "Direct inloggen" link from the email "Uw persoonlijke inloglink"' };
+}
 
-  // Step 3: back through the OIDC callback to the portal.
-  const home = await follow(new URL(posted.headers.get('location'), form.url).href);
-  if (new URL(home.url).origin !== PORTAL || !home.r.ok) {
+/** `login`, step 2: follow the emailed link; returns the session cookie and when it expires. */
+export async function completeLink(link) {
+  if (!/^https:\/\/(links|mijn)\.budgetthuis\.nl\//.test(link)) {
+    throw new Error('Pass the "Direct inloggen" link from the email (https://links.budgetthuis.nl/…)');
+  }
+  const b = browser();
+  const home = await b.follow(link);
+  const session = b.jar(new URL(ACCOUNTS).host).get(SESSION_COOKIE);
+  if (!session || new URL(home.url).origin !== PORTAL || !home.r.ok) {
+    throw new Error(`The link did not sign in (ended on HTTP ${home.r.status} ${home.url.split('?')[0]}). `
+      + 'Links work for 30 days; run `login` for a new one.');
+  }
+  return { session, expires: b.expiry.get(SESSION_COOKIE)?.toISOString().slice(0, 10) ?? null };
+}
+
+/** Writes BUDGETTHUIS_SESSION into the .env next to this file, keeping its other lines. */
+function saveSession(session) {
+  const file = fileURLToPath(ENV_FILE);
+  const lines = (existsSync(file) ? readFileSync(file, 'utf8') : '').split('\n')
+    .filter(l => !l.startsWith('BUDGETTHUIS_SESSION='));
+  while (lines.length && !lines.at(-1).trim()) lines.pop();
+  writeFileSync(file, [...lines, `BUDGETTHUIS_SESSION=${session}`].join('\n') + '\n', { mode: 0o600 });
+  return file;
+}
+
+/**
+ * Sign in to the portal with the session and return {cookie, relationId, token}. The
+ * portal's OIDC callback occasionally answers 500, so the whole flow is retried, except
+ * when the session itself is rejected.
+ */
+export async function login(session = process.env.BUDGETTHUIS_SESSION) {
+  if (!session) throw new Error('No BUDGETTHUIS_SESSION: run `node budgetthuis.mjs login`.');
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await loginOnce(session);
+    } catch (e) {
+      if (e.rejected || attempt === 3) throw e;
+    }
+  }
+}
+
+async function loginOnce(session) {
+  const b = browser();
+  b.jar(new URL(ACCOUNTS).host).set(SESSION_COOKIE, session);
+  const home = await b.follow(`${PORTAL}/energie/overzicht`);
+  const { origin, host } = new URL(home.url);
+  if (origin === ACCOUNTS) {
+    throw Object.assign(new Error('The Budget Thuis session has expired: run `node budgetthuis.mjs login`.'), { rejected: true });
+  }
+  if (origin !== PORTAL || !home.r.ok) {
     throw new Error(`Login flow changed: ended on HTTP ${home.r.status} ${home.url.split('?')[0]} instead of the portal`);
   }
 
   return {
-    cookie: [...jar(new URL(PORTAL).host)].map(([k, v]) => `${k}=${v}`).join('; '),
+    cookie: b.cookies(host),
     relationId: extract(home.html, /id="relationId" value="(\d+)"/, 'relationId'),
     token: extract(home.html, /\btoken: '(eyJ[^']+)'/, 'API token'),
   };
@@ -474,6 +521,8 @@ export async function usage(session, from, to, resolution = 'day', contractId) {
 // ---------------------------------------------------------------------------
 
 const USAGE = `Usage: node budgetthuis.mjs <command> [args]
+  login                            email a login link to BUDGETTHUIS_LOGIN
+  login <link>                     sign in with that link; saves BUDGETTHUIS_SESSION to .env
   account                          customer number, name, address, masked contact/bank details
   contracts                        contracts: id, status, start, duration, supply address
   tariffs                          current contract terms and tariffs
@@ -484,6 +533,12 @@ const USAGE = `Usage: node budgetthuis.mjs <command> [args]
                                    electricity, feed-in, gas and costs, dates YYYY-MM-DD`;
 
 async function main([cmd, ...args]) {
+  const print = out => console.log(JSON.stringify(out, null, 2));
+  if (cmd === 'login') {
+    if (!args[0]) return print(await requestLink());
+    const { session, expires } = await completeLink(args[0]);
+    return print({ ok: true, expires, savedTo: saveSession(session) });
+  }
   const commands = { // name: [required args, run]
     account: [0, s => account(s)],
     contracts: [0, s => contracts(s)],
@@ -494,8 +549,7 @@ async function main([cmd, ...args]) {
     usage: [2, s => usage(s, args[0], args[1], args[2], args[3])],
   };
   if (!commands[cmd] || args.length < commands[cmd][0]) { console.error(USAGE); process.exit(1); }
-  if (!LOGIN || !PASSWORD) { console.error('Set BUDGETTHUIS_LOGIN, BUDGETTHUIS_PASSWORD before running.'); process.exit(1); }
-  console.log(JSON.stringify(await commands[cmd][1](await login()), null, 2));
+  print(await commands[cmd][1](await login()));
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

@@ -2,11 +2,13 @@
 name: budgetthuis
 description: "Read a Budget Thuis energy account (Budget Energie, budgetthuis.nl 'MijnBudget', Dutch electricity and gas supplier): contracts, tariffs per kWh and m³ with energy tax and fixed monthly costs, contract end date and exit fee, the monthly instalment (termijnbedrag) and Budget Thuis's advice, invoices with open balance and PDF download, and hourly to monthly electricity, feed-in and gas usage with costs. Use when the user asks about their energy bill, energy prices or contract, gas or electricity consumption (also per hour or time of day), the termijnbedrag, or whether to renew or switch energy supplier."
 license: MIT-0
-compatibility: "Requires Node.js 22+ and network access to mijn.budgetthuis.nl, accounts.budgetthuis.nl, api.budgetthuis.nl and app.api.nutsservices.nl (the Budget Thuis app's backend). Credentials: BUDGETTHUIS_LOGIN and BUDGETTHUIS_PASSWORD (the MijnBudget account), from the environment or a .env in the skill folder (the environment wins)."
+compatibility: "Requires Node.js 22+ and network access to mijn.budgetthuis.nl, accounts.budgetthuis.nl, api.budgetthuis.nl and app.api.nutsservices.nl (the Budget Thuis app's backend). Env: BUDGETTHUIS_SESSION (set by `login`) and BUDGETTHUIS_LOGIN (the MijnBudget account's email address, for `login`), from the environment or a .env in the skill folder (the environment wins)."
 ---
 # Commands
 
 ```bash
+node budgetthuis.mjs login                            # email a login link to BUDGETTHUIS_LOGIN
+node budgetthuis.mjs login <link>                     # sign in with the emailed link; saves the session
 node budgetthuis.mjs account                          # customer number, name, address (contact and bank details masked)
 node budgetthuis.mjs contracts                        # contractId, status, start date, duration, address
 node budgetthuis.mjs tariffs                          # contract terms, tariffs, renewal offer, exit fee
@@ -18,6 +20,14 @@ node budgetthuis.mjs usage <from> <to> [hour|day|week|month] [contractId]
 ```
 
 Every command prints JSON; none changes the account.
+
+# Auth
+
+Budget Thuis has no password login; it emails a link. `login` asks for one, then `login <link>`
+takes the "Direct inloggen" link from the email "Uw persoonlijke inloglink" (it works for 30 days)
+and saves the session as `BUDGETTHUIS_SESSION` in the skill's `.env`. The session lasts about 90
+days, can be shared between machines, and a new login doesn't end older ones. Once it expires,
+commands fail with "run `node budgetthuis.mjs login`".
 
 # Output notes
 

@@ -1,6 +1,6 @@
 /**
  * Integration tests for budgetthuis.mjs
- * Run: node --test budgetthuis.test.mjs   (reads BUDGETTHUIS_LOGIN/PASSWORD from budgetthuis/.env)
+ * Run: node --test budgetthuis.test.mjs   (reads BUDGETTHUIS_SESSION from budgetthuis/.env)
  *
  * Asserts the shape of every command's output against a live account, so a
  * portal or API change fails loudly instead of returning wrong data.
@@ -27,7 +27,7 @@ function parseEnvFile(path) {
 }
 
 const ENV = { ...process.env, ...parseEnvFile(join(DIR, '../../budgetthuis/.env')) };
-const skip = !(ENV.BUDGETTHUIS_LOGIN && ENV.BUDGETTHUIS_PASSWORD) && 'no BUDGETTHUIS_LOGIN/PASSWORD';
+const skip = !ENV.BUDGETTHUIS_SESSION && 'no BUDGETTHUIS_SESSION';
 
 function runCLI(args) {
   const r = spawnSync('node', [CLI, ...args], { encoding: 'utf8', env: ENV, timeout: 60_000 });
@@ -37,6 +37,12 @@ function runCLI(args) {
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const daysAgo = n => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+
+test('expired session: fails and says to run login', () => {
+  const r = spawnSync('node', [CLI, 'account'], { encoding: 'utf8', env: { ...ENV, BUDGETTHUIS_SESSION: 'expired' }, timeout: 60_000 });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /run `node budgetthuis\.mjs login`/);
+});
 
 test('account: customer number and name', { skip }, () => {
   const a = runCLI(['account']);
