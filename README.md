@@ -6,7 +6,7 @@ npm dependencies, plus a `SKILL.md` that tells the agent how to use it.
 | Skill | What it does |
 |---|---|
 | [magister](magister/SKILL.md) | Magister school portal: timetable with homework and tests, grades, absences, messages; reports a child sick |
-| [ovpay](ovpay/SKILL.md) | OVpay public transport: cards, balances, trip history with fares, CSV export; turns on trip-history protection |
+| [ovpay](ovpay/SKILL.md) | OVpay public transport: cards, balances, trip history with fares, CSV export; corrects missed check-outs; turns on trip-history protection |
 | [htm](htm/SKILL.md) | HTM (Den Haag) public transport: passes, products, trips, Regio Vrij advice; puts a product in the cart, you pay |
 | [budgetthuis](budgetthuis/SKILL.md) | Budget Thuis energy: tariffs, contract, monthly instalment, invoices (PDF), usage with costs |
 | [vodafone](vodafone/SKILL.md) | Vodafone mobile: numbers, bundles left, usage and costs, invoices (PDF) with per-number breakdown and call records, PUK |

@@ -67,7 +67,23 @@ test('trips: returns well-formed rows for the first card', { skip: !haveToken &&
   for (const t of trips) {
     assert.match(t.date, /^\d{4}-\d{2}-\d{2}$/);
     assert.ok('mode' in t && 'departure' in t && ('fareEur' in t));
+    assert.ok(t.id != null && typeof t.status === 'string', JSON.stringify(t));
   }
+});
+
+// Read-only: a trip's correction options. `correct` itself is never run here, since each one is
+// irreversible and uses up one of the card's few corrections.
+test('correction: options for the first card\'s newest trip', { skip: !haveToken && 'no OVPAY_REFRESH_TOKEN' }, () => {
+  const first = JSON.parse(runCLI(['cards']).stdout)[0];
+  const [trip] = JSON.parse(runCLI(['trips', first.xtat]).stdout);
+  if (!trip) return;
+  const { stdout, status, stderr } = runCLI(['correction', first.xtat, String(trip.id)]);
+  assert.equal(status, 0, stderr);
+  const c = JSON.parse(stdout);
+  assert.equal(c.trip.id, trip.id);
+  assert.ok(c.status === null || typeof c.status === 'string');
+  assert.ok(Array.isArray(c.stops));
+  for (const s of c.stops) assert.ok(s.code && s.name, JSON.stringify(s));
 });
 
 // Keep the vault seed usable on the next fresh-machine run (best-effort).

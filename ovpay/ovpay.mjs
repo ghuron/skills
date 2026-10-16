@@ -31,6 +31,8 @@
  *   trips <card> [from] [to]           trips (card = name or xtat; dates YYYY-MM-DD, inclusive)
  *   export <card> <file.csv> [from] [to]   write trips to CSV
  *   get <path>                         raw GET against https://api.ovpay.app
+ *   correction <card> <tripId>         can a missed check-out be corrected, until when, to which stops
+ *   correct <card> <tripId> <stop>     correct a missed check-out (uses one of a limited number)
  *   secure <card>                      enable SecureTat on a card (one-time email OTP)
  *   login                              one-time login (email code) -> stores the offline token
  */
@@ -167,20 +169,28 @@ async function resolve(card) {
   return match.xtat;
 }
 
+const STATUS = { COMPLETE: 'complete', CKOMISSING: 'missingCheckOut', CORRECTED: 'corrected' };
+const eur = cents => typeof cents === 'number' ? cents / 100 : null;
+
 // Fares are eurocents. checkInTimestamp carries the Europe/Amsterdam offset, so
-// its first 10 characters are the local date that from/to filter on.
-function toTrip(t) {
-  const ci = t.checkInTimestamp || '', co = t.checkOutTimestamp || '';
+// its first 10 characters are the local date that from/to filter on. `it` is a
+// trip-history item ({trip, correctedFrom, ...}) or a trip-details answer.
+function toTrip(it) {
+  const t = it.trip, ci = t.checkInTimestamp || '', co = t.checkOutTimestamp || '';
   return {
+    id: t.id,
     date: ci.slice(0, 10),
     departureTime: ci.slice(11, 16), departure: t.checkInLocation || '',
     arrivalTime: co.slice(11, 16), arrival: t.checkOutLocation || '',
     mode: MODE[t.transport] || (t.transport || ''), operator: t.organisationName || '',
-    fareEur: typeof t.fare === 'number' ? t.fare / 100 : null,
+    fareEur: eur(t.fare),
+    status: STATUS[t.status] || t.status || null,
+    ...(it.correctedFrom ? { originalFareEur: eur(it.correctedFrom.fare) } : {}),
   };
 }
 
-export async function trips(card, from = null, to = null) {
+/** A card's raw trip-history items, with the SecureTat token they needed (null if none). */
+async function tripItems(card) {
   const xtat = await resolve(card);
   let st = null;
   const fetchPage = (offset) =>
@@ -200,7 +210,11 @@ export async function trips(card, from = null, to = null) {
     offset += batch.length || 50;
     r = await fetchPage(offset);
   }
-  let out = items.map(it => toTrip(it.trip));
+  return { st, items };
+}
+
+export async function trips(card, from = null, to = null) {
+  let out = (await tripItems(card)).items.map(toTrip);
   if (from) out = out.filter(t => t.date >= from);
   if (to) out = out.filter(t => t.date <= to);
   out.sort((a, b) => (a.date + a.departureTime < b.date + b.departureTime ? 1 : -1));
@@ -216,6 +230,76 @@ export function tripsCsv(list) {
       t.operator, t.fareEur == null ? '' : t.fareEur.toFixed(2)].map(esc).join(','));
   }
   return rows.join('\n') + '\n';
+}
+
+// --------------------------------------------------------------------------- //
+// Missed check-out correction (from the ovpay.nl web app's API client; the app
+// API takes the same calls)
+//
+// GET /api/v3/Trips/{xbot}/{tripId} is a trip's details: correctionOptions has
+// correctableStatus (Correctable, Expired, NotSupported, ...), the window, and
+// the stops to pick as the check-out (privateCode + names, "Halte Onbekend" =
+// 65533 among them); correctionAvailability counts the corrections left in the
+// operator group (BusTramMetro) until its end date. PUT
+// /api/v1/TripCorrection/{xbot}/{tripId}?stopPrivateCode= submits one; the trip
+// keeps its id, gets version 2, status CORRECTED and the recalculated fare, and
+// correctedFrom holds the original. The trip's own xbot is needed, which differs
+// from the card's current one for trips made before a card was replaced.
+// --------------------------------------------------------------------------- //
+const stopName = s => (s.localizedNames || []).find(n => n.language === 'nl-NL')?.text
+  || s.localizedNames?.[0]?.text || s.privateCode;
+
+async function tripDetails(card, tripId) {
+  const { st, items } = await tripItems(card);
+  const it = items.find(i => String(i.trip?.id) === String(tripId));
+  if (!it) throw new Error(`No trip ${tripId} for ${card}; \`trips\` lists the ids.`);
+  const r = await api(`/api/v3/Trips/${it.trip.xbot}/${it.trip.id}`, { secureTat: st });
+  if (r.status !== 200) throw new Error(`trip details -> ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  return { st, trip: it.trip, details: await r.json() };
+}
+
+export async function correction(card, tripId) {
+  const { details: d } = await tripDetails(card, tripId);
+  const o = d.correctionOptions || {}, a = d.correctionAvailability;
+  return {
+    trip: toTrip(d),
+    status: o.correctableStatus || null,
+    window: { from: o.correctionWindowStart || null, until: o.correctionWindowEnd || null },
+    remaining: a ? {
+      group: a.correctionGroup, left: a.numberOfRemainingCorrections,
+      max: a.maximumNumberOfCorrections, until: a.enddate,
+    } : null,
+    stops: (o.stops || []).map(s => ({ code: s.privateCode, name: stopName(s) })),
+  };
+}
+
+/** Correct a missed check-out to `stop` (a name or code from `correction`). Uses up one correction. */
+export async function correct(card, tripId, stop) {
+  const { st, trip, details: d } = await tripDetails(card, tripId);
+  const o = d.correctionOptions || {};
+  if (o.correctableStatus !== 'Correctable') {
+    throw new Error(`Trip ${tripId} can't be corrected: ${o.correctableStatus || 'no correction options'}`
+      + (o.correctionWindowEnd ? ` (window until ${o.correctionWindowEnd})` : ''));
+  }
+  const stops = o.stops || [];
+  const want = String(stop).toLowerCase();
+  const hits = stops.filter(s => s.privateCode === String(stop)
+    || (s.localizedNames || []).some(n => n.text.toLowerCase() === want));
+  if (hits.length !== 1) {
+    const list = stops.map(s => `${stopName(s)} (${s.privateCode})`).join(', ');
+    throw new Error(hits.length ? `Stop ${stop} is ambiguous; pass its code: ${hits.map(s => s.privateCode).join(', ')}`
+      : `No stop ${stop} on this trip; choose one of: ${list}`);
+  }
+  const code = hits[0].privateCode;
+  const r = await api(`/api/v1/TripCorrection/${trip.xbot}/${trip.id}?stopPrivateCode=${encodeURIComponent(code)}`,
+    { method: 'PUT', secureTat: st });
+  if (r.status >= 400) throw new Error(`correction -> ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  const after = await api(`/api/v3/Trips/${trip.xbot}/${trip.id}`, { secureTat: st });
+  return {
+    corrected: true,
+    stop: { code, name: stopName(hits[0]) },
+    trip: after.status === 200 ? toTrip(await after.json()) : null,
+  };
 }
 
 // --------------------------------------------------------------------------- //
@@ -352,10 +436,16 @@ async function main(argv) {
       return { file: a[1], trips: list.length };
     }
     case 'get': { const r = await api(a[0]); return { status: r.status, body: await r.json().catch(() => null) }; }
+    case 'correction':
+      if (a.length < 2) throw new Error('Usage: correction <card> <tripId>');
+      return correction(a[0], a[1]);
+    case 'correct':
+      if (a.length < 3) throw new Error('Usage: correct <card> <tripId> <stop>');
+      return correct(a[0], a[1], a.slice(2).join(' '));
     case 'secure': return secure(a[0]);
     case 'login': { await login(); return { ok: true, note: 'offline token stored in ' + STATE }; }
     default:
-      throw new Error('commands: cards | customer | trips | export | get | secure | login');
+      throw new Error('commands: cards | customer | trips | export | get | correction | correct | secure | login');
   }
 }
 
