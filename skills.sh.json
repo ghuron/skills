@@ -18,6 +18,11 @@
       "skills": ["budgetthuis"]
     },
     {
+      "title": "Mobile",
+      "description": "Numbers, bundles, usage and bills from Dutch mobile providers.",
+      "skills": ["vodafone"]
+    },
+    {
       "title": "Money",
       "description": "Bank exports and grocery invoices to CSV.",
       "skills": ["abn-amro", "ah"]

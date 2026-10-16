@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
   "name": "ghuron-skills",
-  "description": "Agent skills for Dutch everyday services: Magister (school), OVpay and HTM (public transport), Budget Thuis (energy), ABN AMRO (bank exports), Albert Heijn (grocery invoices) and Epson printer ink.",
+  "description": "Agent skills for Dutch everyday services: Magister (school), OVpay and HTM (public transport), Budget Thuis (energy), Vodafone (mobile), ABN AMRO (bank exports), Albert Heijn (grocery invoices) and Epson printer ink.",
   "owner": {
     "name": "ghuron",
     "url": "https://github.com/ghuron"
@@ -49,6 +49,17 @@
       "keywords": ["budgetthuis", "budget-energie", "energy", "electricity", "gas", "termijnbedrag", "netherlands"],
       "license": "MIT-0",
       "homepage": "https://github.com/ghuron/skills/tree/main/budgetthuis",
+      "repository": "https://github.com/ghuron/skills"
+    },
+    {
+      "name": "vodafone",
+      "source": "./",
+      "skills": ["./vodafone"],
+      "description": "Vodafone Netherlands mobile: subscriptions with contract and PUK, bundles left and usage with costs, invoices with PDF download, per-number breakdown and billed call records.",
+      "category": "home",
+      "keywords": ["vodafone", "vodafoneziggo", "mobile", "phone", "data", "bundel", "invoice", "netherlands"],
+      "license": "MIT-0",
+      "homepage": "https://github.com/ghuron/skills/tree/main/vodafone",
       "repository": "https://github.com/ghuron/skills"
     },
     {

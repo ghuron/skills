@@ -56,6 +56,7 @@ write_env /magister_child  magister/.child.env   # tests only
 write_env /epson           epson/.env
 write_env /ovpay           ovpay/.env
 write_env /budgetthuis     budgetthuis/.env
+write_env /vodafone        vodafone/.env
 
 # ---------------------------------------------------------------------------
 # System secrets (not on GitHub Actions: it checks out with its own token and never pushes)
