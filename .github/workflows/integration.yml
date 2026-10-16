@@ -44,8 +44,9 @@ jobs:
             skills=$all
           fi
           # Each use of ovpay's offline token replaces it, so it stays on the machine that can also
-          # log in again (emailed code); the runner never touches it.
-          skills=$(grep -vx ovpay <<<"$skills" || true)
+          # log in again (emailed code); the runner never touches it. The Budget Thuis portal
+          # answers GitHub's runners with 403 "Request forbidden by administrative rules".
+          skills=$(grep -vxE 'ovpay|budgetthuis' <<<"$skills" || true)
           echo "skills=$(jq -Rnc '[inputs | select(length > 0)]' <<<"$skills")" >> "$GITHUB_OUTPUT"
 
   test:
