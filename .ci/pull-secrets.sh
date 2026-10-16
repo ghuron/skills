@@ -58,22 +58,24 @@ write_env /ovpay           ovpay/.env
 write_env /budgetthuis     budgetthuis/.env
 
 # ---------------------------------------------------------------------------
-# System secrets
+# System secrets (not on GitHub Actions: it checks out with its own token and never pushes)
 # ---------------------------------------------------------------------------
-echo "==> Loading system secrets"
-GITHUB_TOKEN=$(get_secret GITHUB_TOKEN /)
-GIT_USER_NAME=$(get_secret GIT_USER_NAME /)
-GIT_USER_EMAIL=$(get_secret GIT_USER_EMAIL /)
+if [ -z "${GITHUB_ACTIONS:-}" ]; then
+  echo "==> Loading system secrets"
+  GITHUB_TOKEN=$(get_secret GITHUB_TOKEN /)
+  GIT_USER_NAME=$(get_secret GIT_USER_NAME /)
+  GIT_USER_EMAIL=$(get_secret GIT_USER_EMAIL /)
 
-echo "==> Configuring git"
-git config --global user.name  "$GIT_USER_NAME"
-git config --global user.email "$GIT_USER_EMAIL"
-if [ -n "$GITHUB_TOKEN" ]; then
-  git config --global credential.helper store
-  printf 'https://%s:%s@github.com\n' "$GIT_USER_NAME" "$GITHUB_TOKEN" > ~/.git-credentials
-  chmod 600 ~/.git-credentials
-else
-  echo "    No GITHUB_TOKEN in Infisical: keeping the existing git credentials"
+  echo "==> Configuring git"
+  git config --global user.name  "$GIT_USER_NAME"
+  git config --global user.email "$GIT_USER_EMAIL"
+  if [ -n "$GITHUB_TOKEN" ]; then
+    git config --global credential.helper store
+    printf 'https://%s:%s@github.com\n' "$GIT_USER_NAME" "$GITHUB_TOKEN" > ~/.git-credentials
+    chmod 600 ~/.git-credentials
+  else
+    echo "    No GITHUB_TOKEN in Infisical: keeping the existing git credentials"
+  fi
 fi
 
 echo ""

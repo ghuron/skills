@@ -3,4 +3,5 @@
 !.env.example
 !.claude-plugin/
 !.ci/
+!.github/
 node_modules/
