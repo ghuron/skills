@@ -51,6 +51,9 @@ Tests in the '$skill' skill are failing. Error output:
 $test_output
 
 The skill lives in $skill_dir; its tests and dev scripts are in $test_dir. Fix the issue in $skill_dir or in the dev scripts (do not modify test files).
+
+$(cat "$CI/AGENTS.md")
+
 After fixing, explain what changed in one sentence starting with 'Fix: '.
 PROMPT
 )" \
