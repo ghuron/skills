@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
   "name": "ghuron-skills",
-  "description": "Agent skills for Dutch everyday services: Magister (school), OVpay and HTM (public transport), Budget Thuis (energy), Vodafone (mobile), ABN AMRO (bank exports), Albert Heijn (grocery invoices) and Epson printer ink.",
+  "description": "Agent skills for Dutch everyday services: Magister (school), OVpay and HTM (public transport), Budget Thuis (energy), Vodafone (mobile), ABN AMRO (bank exports), Albert Heijn (grocery invoices), Epson printer ink and Ecovacs robot vacuums.",
   "owner": {
     "name": "ghuron",
     "url": "https://github.com/ghuron"
@@ -93,6 +93,17 @@
       "keywords": ["epson", "printer", "ink"],
       "license": "MIT-0",
       "homepage": "https://github.com/ghuron/skills/tree/main/epson",
+      "repository": "https://github.com/ghuron/skills"
+    },
+    {
+      "name": "ecovacs",
+      "source": "./",
+      "skills": ["./ecovacs"],
+      "description": "Ecovacs DEEBOT robot vacuum and mop: state, battery, errors, consumables, cleaning history and rooms; start cleaning everywhere or chosen rooms, pause, resume, stop, dock, locate, suction and water level.",
+      "category": "home",
+      "keywords": ["ecovacs", "deebot", "robot-vacuum", "stofzuiger", "vacuum", "mop", "smart-home"],
+      "license": "MIT-0",
+      "homepage": "https://github.com/ghuron/skills/tree/main/ecovacs",
       "repository": "https://github.com/ghuron/skills"
     }
   ]

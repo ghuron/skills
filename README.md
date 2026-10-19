@@ -13,6 +13,7 @@ npm dependencies, plus a `SKILL.md` that tells the agent how to use it.
 | [abn-amro](abn-amro/SKILL.md) | ABN AMRO transaction export (.TAB) to CSV, offline |
 | [ah](ah/SKILL.md) | Albert Heijn online-order invoices (PDF) to CSV, offline |
 | [epson](epson/SKILL.md) | Ink levels of an Epson Expression XP-series network printer |
+| [ecovacs](ecovacs/SKILL.md) | Ecovacs DEEBOT robot vacuum: status, consumables, cleaning history, rooms; starts, pauses, stops and docks it |
 
 ## Install
 
@@ -30,7 +31,7 @@ Updating with `npx skills` replaces the folder, `.env` included.
 ## Disclaimer
 
 Unofficial tools, not affiliated with or endorsed by Magister, OVpay, HTM, Budget Thuis, Vodafone, ABN AMRO, Albert
-Heijn or Epson. They use the same undocumented APIs as the services' own websites and apps, which can change without
+Heijn, Epson or Ecovacs. They use the same undocumented APIs as the services' own websites and apps, which can change without
 notice.
 
 ## License

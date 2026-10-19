@@ -68,6 +68,7 @@ The workflow currently leaves out `ovpay` and `budgetthuis`. Delete it once the 
 | htm | password | Tests add a product to the cart and remove it. `.ci/htm/refresh.mjs` refreshes the bundled region catalogue |
 | magister | password (parent and child accounts) | Sick report runs as a dry run (`.ci/magister/dry-run.mjs`) |
 | epson | none | Needs `EPSON_HOST`; there's no `/epson` folder in Infisical yet |
+| ecovacs | emailed code once, then a session | `login` / `login <code>` save `ECOVACS_SESSION`; tests only read, never move the robot; no `/ecovacs` folder in Infisical yet |
 | ah | none | Needs invoice PDFs in `.ci/ah/.fixtures/` (gitignored); `parse_invoice.py` needs `python3` with `pypdf` |
 | abn-amro | none | Offline |
 
