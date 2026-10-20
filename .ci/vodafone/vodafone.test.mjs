@@ -120,9 +120,25 @@ test('invoice: breakdown adds up to the invoice total', { skip }, () => {
   assert.equal(b.total, newest.total);
   assert.match(b.subscriptions.period.from, ISO);
   const perNumber = b.perNumber.reduce((s, n) => s + n.total, 0);
-  assert.ok(Math.abs(perNumber - b.total) < 0.01, `per-number totals ${perNumber} != ${b.total}`);
+  const other = b.other.reduce((s, x) => s + x.amount, 0);
+  assert.ok(Math.abs(perNumber + other - b.total) < 0.01, `per-number totals ${perNumber} + other ${other} != ${b.total}`);
   for (const n of b.perNumber) assert.match(n.number, PHONE);
   onInvoice = b.perNumber[0].number;
+});
+
+test('invoice <number>: one number\'s lines add up to its total', { skip }, () => {
+  const d = runCLI(['invoice', newest.invoiceNumber, onInvoice]);
+  assert.equal(d.number, onInvoice);
+  assert.ok(isNum(d.total));
+  for (const x of d.usage) {
+    assert.ok(['voice', 'data', 'sms', 'money', 'other'].includes(x.type), x.type);
+    assert.ok(isNum(x.events) && isNum(x.inBundle) && isNum(x.billed) && isNum(x.cost), JSON.stringify(x));
+  }
+  const amounts = [...d.subscriptions.items.map(x => x.amount), ...d.usage.map(x => x.cost),
+    ...[...d.oneOff, ...d.discounts, ...d.credits, ...d.undisclosed].map(x => x.amount)];
+  for (const a of amounts) assert.ok(isNum(a), `amount ${a}`);
+  const sum = amounts.reduce((s, a) => s + a, 0);
+  assert.ok(Math.abs(sum - d.total) < 0.01, `lines ${sum} != ${d.total}`);
 });
 
 test('events: billed records of one number on the newest invoice', { skip }, () => {

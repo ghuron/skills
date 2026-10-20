@@ -12,6 +12,7 @@
  *   usage [number]                            current period: bundles left, usage, out-of-bundle costs
  *   invoices                                  invoices with period, amounts, due date and status
  *   invoice <invoiceNumber>                   invoice breakdown: subscriptions, usage, per-number totals
+ *   invoice <invoiceNumber> <number>          one number's lines: subscriptions, usage per kind, credits
  *   pdf <invoiceNumber> [file.pdf]            download an invoice PDF
  *   events <invoiceNumber> <number> [voice|data|sms]
  *                                             billed calls, data sessions and texts on an invoice
@@ -447,9 +448,32 @@ export async function invoices(session) {
 const charges = async (session, inv) =>
   (await rest(session, `my/invoice/charges/${inv.bc}?${new URLSearchParams(invoiceQuery(inv))}`))[0];
 
-export async function invoice(session, number) {
+/** The subscriber summary for `which` on an invoice's charges; throws when the number isn't on it. */
+function subscriber(c, which, number) {
+  const subscribers = c.subscriber_charges_summaries ?? [];
+  const want = msisdn(which);
+  const sub = subscribers.find(s => msisdn(s.primary_msisdn) === want);
+  if (!sub) {
+    throw new Error(`Number ${which} is not on invoice ${number}; it has ${subscribers.map(s => phone(s.primary_msisdn)).join(', ')}`);
+  }
+  return sub;
+}
+
+const lines = xs => (xs ?? []).map(x => ({ description: x.description, amount: euro(x.amount) }));
+
+const recurring = x => ({
+  description: x.description,
+  quantity: +x.quantity,
+  amount: euro(x.amount),
+  from: day(x.start_date),
+  to: day(x.end_date),
+  discount: !!x.is_discount,
+});
+
+export async function invoice(session, number, which) {
   const inv = await findInvoice(session, number);
   const c = await charges(session, inv);
+  if (which) return numberInvoice(session, inv, subscriber(c, which, number));
   return {
     invoiceNumber: number,
     total: euro(c.total),
@@ -457,14 +481,7 @@ export async function invoice(session, number) {
     subscriptions: {
       period: { from: day(c.recurring_charges_period?.start_date), to: day(c.recurring_charges_period?.end_date) },
       total: euro(c.recurring_charges_total),
-      items: (c.recurring_charges ?? []).map(x => ({
-        description: x.description,
-        quantity: +x.quantity,
-        amount: euro(x.amount),
-        from: day(x.start_date),
-        to: day(x.end_date),
-        discount: !!x.is_discount,
-      })),
+      items: (c.recurring_charges ?? []).map(recurring),
     },
     usage: {
       total: euro(c.invoice_usage_charges_total),
@@ -486,6 +503,49 @@ export async function invoice(session, number) {
       credit: euro(s.total_credit_amount),
       total: euro(s.subscriber_subtotal),
     })),
+    other: lines(c.other_charges),
+  };
+}
+
+// /my/invoice/subscriber-charges/{bc} (the app's per-number page) itemises one
+// subscriber. Usage comes per message code, split into free_* (in a bundle) and
+// billed_* events and units, with charge_uom spelled out. One-off, discount,
+// credit and undisclosed charges are lists of {description, amount}. Their
+// *_total fields can disagree with the items (seen on a credit: credit_charges_total
+// differed from its items, and recurring_charges_total by the same amount the other
+// way); the items add up to `total`. Charges on the account rather than a number come
+// only on the invoice's charges, as other_charges.
+const UOM = { SECONDS: 'S', KILOBYTES: 'K', OCCURRENCE: 'O' };
+
+async function numberInvoice(session, inv, sub) {
+  const q = new URLSearchParams({ ...invoiceQuery(inv), subscriber_id: sub.subscriber_id });
+  const [d] = await rest(session, `my/invoice/subscriber-charges/${inv.bc}?${q}`);
+  return {
+    invoiceNumber: inv.raw.number,
+    number: phone(sub.primary_msisdn),
+    name: d.subscriber_name ?? null,
+    total: euro(d.total),
+    subscriptions: {
+      period: { from: day(d.recurring_charges_period?.start_date), to: day(d.recurring_charges_period?.end_date) },
+      items: (d.recurring_charges ?? []).map(recurring),
+    },
+    usage: (d.subscriber_usage_charges ?? []).flatMap(u => (u.event_charges_summaries ?? []).map(x => {
+      const m = measure(UOM[x.charge_uom] ?? x.charge_uom);
+      return {
+        type: TYPES[u.event_type] ?? u.event_type,
+        description: x.message_text,
+        events: +x.free_event + +x.billed_event,
+        inBundle: m.of(x.free_unit),
+        billed: m.of(x.billed_unit),
+        unit: m.unit,
+        cost: euro(x.amount),
+        discount: !!x.is_discount,
+      };
+    })),
+    oneOff: lines(d.one_time_charges),
+    discounts: lines(d.discount_charges),
+    credits: lines(d.credit_charges),
+    undisclosed: lines(d.undisclosed_charges),
   };
 }
 
@@ -516,12 +576,7 @@ const PAGE = 1000;
 export async function events(session, number, which, type) {
   if (type && !EVENT_TYPES[type]) throw new Error(`Type must be one of ${Object.keys(EVENT_TYPES).join(', ')}`);
   const inv = await findInvoice(session, number);
-  const subscribers = (await charges(session, inv)).subscriber_charges_summaries ?? [];
-  const want = msisdn(which);
-  const sub = subscribers.find(s => msisdn(s.primary_msisdn) === want);
-  if (!sub) {
-    throw new Error(`Number ${which} is not on invoice ${number}; it has ${subscribers.map(s => phone(s.primary_msisdn)).join(', ')}`);
-  }
+  const sub = subscriber(await charges(session, inv), which, number);
   // The types are independent requests; pages within a type follow total_results.
   const perType = await Promise.all((type ? [EVENT_TYPES[type]] : Object.values(EVENT_TYPES)).map(async t => {
     const out = [];
@@ -608,6 +663,7 @@ const USAGE = `Usage: node vodafone.mjs <command> [args]
   usage [number]                            current period: bundles left, usage, out-of-bundle costs
   invoices                                  invoices with period, amounts, due date and status
   invoice <invoiceNumber>                   invoice breakdown: subscriptions, usage, per-number totals
+  invoice <invoiceNumber> <number>          one number's lines: subscriptions, usage per kind, credits
   pdf <invoiceNumber> [file.pdf]            download an invoice PDF
   events <invoiceNumber> <number> [voice|data|sms]
                                             billed calls, data sessions and texts on an invoice
@@ -621,7 +677,7 @@ async function main([cmd, ...args]) {
     product: [1, s => product(s, args[0])],
     usage: [0, s => usage(s, args[0])],
     invoices: [0, s => invoices(s)],
-    invoice: [1, s => invoice(s, args[0])],
+    invoice: [1, s => invoice(s, args[0], args[1])],
     pdf: [1, s => downloadPdf(s, args[0], args[1])],
     events: [2, s => events(s, args[0], args[1], args[2])],
     internet: [0, s => internet(s, args[0], args[1])],
