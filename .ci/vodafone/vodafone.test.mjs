@@ -135,3 +135,19 @@ test('events: billed records of one number on the newest invoice', { skip }, () 
     assert.ok(isNum(e.quantity) && isNum(e.cost), JSON.stringify(e));
   }
 });
+
+// Read-only: switching would cut a real phone's mobile internet.
+test('internet: on or off per number, all numbers by default', { skip }, () => {
+  const all = runCLI(['internet']);
+  assert.deepEqual(all.map(i => i.number), numbers);
+  for (const i of all) {
+    assert.ok(['on', 'off'].includes(i.internet), JSON.stringify(i));
+    assert.equal(typeof i.changeable, 'boolean');
+  }
+});
+
+test('internet: rejects a state other than on or off, before any change', { skip }, () => {
+  const r = spawnSync('node', [CLI, 'internet', numbers[0], 'maybe'], { encoding: 'utf8', env: ENV, timeout: 60_000 });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /internet <number> on\|off/);
+});

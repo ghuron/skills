@@ -1,6 +1,6 @@
 ---
 name: vodafone
-description: "Read a Vodafone Netherlands mobile account (My Vodafone, vodafone.nl, VodafoneZiggo): subscriptions per phone number with plan, contract end date, SIM card and PUK code; bundles left this period (data, minutes, SMS, EU roaming and daily allowances) with usage and out-of-bundle costs; invoices with amounts, due dates and PDF download, an invoice's breakdown per number, and its billed calls, data sessions and texts. Use when the user asks about their Vodafone bill, mobile data or minutes left, phone usage or costs per number, a PUK code, contract end date, or whether to change or cancel a Vodafone subscription."
+description: "Read a Vodafone Netherlands mobile account (My Vodafone, vodafone.nl, VodafoneZiggo) and switch mobile internet on or off per number: subscriptions per phone number with plan, contract end date, SIM card and PUK code; bundles left this period (data, minutes, SMS, EU roaming and daily allowances) with usage and out-of-bundle costs; invoices with amounts, due dates and PDF download, an invoice's breakdown per number, and its billed calls, data sessions and texts; whether mobile internet (data) is on per number, and switching it off or back on (the Blokkeren page). Use when the user asks about their Vodafone bill, mobile data or minutes left, phone usage or costs per number, a PUK code, contract end date, whether to change or cancel a Vodafone subscription, or wants to turn mobile data off or on for a phone (a child's, say)."
 license: MIT-0
 compatibility: "Requires Node.js 22+ and network access to www.vodafone.nl. Env: VODAFONE_USERNAME (the My Vodafone login, usually an email address) and VODAFONE_PASSWORD, from the environment or a .env in the skill folder (the environment wins)."
 ---
@@ -16,10 +16,13 @@ node vodafone.mjs invoice <invoiceNumber>                # breakdown: subscripti
 node vodafone.mjs pdf <invoiceNumber> [file.pdf]         # download the invoice PDF (default <invoiceNumber>.pdf)
 node vodafone.mjs events <invoiceNumber> <number> [voice|data|sms]
                                                          # billed calls, data sessions and texts, oldest first
+node vodafone.mjs internet [number]                      # whether mobile internet is on; all numbers by default
+node vodafone.mjs internet <number> on|off               # switch a number's mobile internet on or off
 ```
 
 `<number>` is a phone number in any notation (`0612345678`, `+31612345678`) or a `productId`
-from `products`. Every command prints JSON; none changes the account.
+from `products`. Every command prints JSON. Only `internet <number> on|off` changes the account, so
+run it only when the user asks.
 
 # Auth
 
@@ -44,3 +47,8 @@ ahead (`invoice` → `subscriptions.period`). `due` is what's still unpaid, `ope
 
 `events` lists one number's records on one invoice. `bundle` is `in`, `partly` or `outside` the
 bundle; `from` is the country the phone was in.
+
+`internet` is the "Mobiel internet" switch on the Blokkeren page: `off` blocks mobile data on the
+network until it is switched back `on` (calls, texts and Wi-Fi keep working). A switch prints the
+new state as Vodafone reports it. `changeable` is false for 10-20 seconds after a change,
+while Vodafone processes it; switching again in that window fails with "try again in a minute".

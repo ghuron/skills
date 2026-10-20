@@ -15,6 +15,8 @@
  *   pdf <invoiceNumber> [file.pdf]            download an invoice PDF
  *   events <invoiceNumber> <number> [voice|data|sms]
  *                                             billed calls, data sessions and texts on an invoice
+ *   internet [number]                         whether mobile internet is on, per number
+ *   internet <number> on|off                  switch a number's mobile internet on or off
  */
 
 import { fileURLToPath } from 'url';
@@ -160,22 +162,25 @@ export async function login(username = process.env.VODAFONE_USERNAME, password =
 // products have their own /my/prepaid/{bc}/products/{id} endpoints; untested.
 // ---------------------------------------------------------------------------
 
-/** GET /rest/<path> with the bearer token; throws on an HTTP error. */
-async function get(session, path, accept = 'application/json') {
-  const r = await http(`${REST}/${path}`, {
-    headers: { 'User-Agent': UA, Accept: accept, Authorization: `Bearer ${session.token}` },
+/** GET /rest/<path> with the bearer token, or POST `body` as JSON; throws on an HTTP error. */
+async function call(session, path, { accept = 'application/json', body } = {}) {
+  const headers = { 'User-Agent': UA, Accept: accept, Authorization: `Bearer ${session.token}` };
+  const r = await http(`${REST}/${path}`, body === undefined ? { headers } : {
+    method: 'POST',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
   });
   if (!r.ok) throw new Error(`HTTP ${r.status} for /rest/${path.split('?')[0]}`);
   return r;
 }
 
-export async function rest(session, path) {
-  const body = await (await get(session, path)).json();
-  if (body.status >= 400) {
-    const detail = body.error && Object.keys(body.error).length ? `: ${JSON.stringify(body.error).slice(0, 200)}` : '';
-    throw new Error(`Vodafone answered ${body.status} for /rest/${path.split('?')[0]}${detail}`);
+export async function rest(session, path, body) {
+  const res = await (await call(session, path, { body })).json();
+  if (res.status >= 400) {
+    const detail = res.error && Object.keys(res.error).length ? `: ${JSON.stringify(res.error).slice(0, 200)}` : '';
+    throw new Error(`Vodafone answered ${res.status} for /rest/${path.split('?')[0]}${detail}`);
   }
-  return body.data;
+  return res.data;
 }
 
 // One formatter for all timestamps: building one per call is ~40x slower, which shows on `events`.
@@ -491,7 +496,7 @@ export async function downloadPdf(session, number, file = `${number}.pdf`) {
     if (attempt === 10) throw new Error(`Invoice ${number}: Vodafone did not have the PDF ready after 50 s`);
     await sleep(5000);
   }
-  const pdf = Buffer.from(await (await get(session, `${base}/download/${number}`, '*/*')).arrayBuffer());
+  const pdf = Buffer.from(await (await call(session, `${base}/download/${number}`, { accept: '*/*' })).arrayBuffer());
   if (pdf.subarray(0, 4).toString() !== '%PDF') throw new Error(`Invoice ${number}: the download is not a PDF`);
   writeFileSync(file, pdf);
   return { file, bytes: pdf.length };
@@ -544,6 +549,55 @@ export async function events(session, number, which, type) {
 }
 
 // ---------------------------------------------------------------------------
+// internet: the mobile internet switch on the app's "Blokkeren" page (chunk
+// BlockData). GET /my/{bc}/products/{product}/user-bars?include_settings=true
+// &filter_settings=true gives the call bars (user_bars) and settings; the
+// setting with component_code Data has settingcode Internet_Access, value Yes
+// or No, and change_settings_allowed. POST /my/{bc}/products/{product}/settings
+// with that setting (action SET, its component ids, the new value) changes it.
+// ---------------------------------------------------------------------------
+
+const INTERNET = { Yes: 'on', No: 'off' };
+
+async function internetSetting(session, p) {
+  const [d] = await rest(session, `my/${p.billingCustomerId}/products/${p.productId}/user-bars?include_settings=true&filter_settings=true`);
+  return (d?.settings ?? []).find(s => s.component_code === 'Data') ?? null;
+}
+
+const internetOf = (p, s) => ({
+  number: p.number,
+  internet: s ? INTERNET[s.component_setting?.value] ?? s.component_setting?.value ?? null : null,
+  changeable: !!s?.change_settings_allowed,
+});
+
+export async function internet(session, which, state) {
+  if (state === undefined) {
+    const list = which ? [await findProduct(session, which)] : await products(session);
+    return Promise.all(list.map(async p => internetOf(p, await internetSetting(session, p))));
+  }
+  if (!['on', 'off'].includes(state)) throw new Error('Switch internet with on or off: internet <number> on|off');
+  const p = await findProduct(session, which);
+  const s = await internetSetting(session, p);
+  if (!s) throw new Error(`${p.number} has no mobile internet setting`);
+  // change_settings_allowed is also false for 10-20 s after a change, while Vodafone processes it
+  if (!s.change_settings_allowed) {
+    throw new Error(`Vodafone doesn't allow changing mobile internet for ${p.number} now; if it was just changed, try again in a minute`);
+  }
+  await rest(session, `my/${p.billingCustomerId}/products/${p.productId}/settings`, {
+    action: 'SET',
+    assigned_component_id: s.assigned_component_id,
+    component_code: s.component_code,
+    component_settings: [{ value: state === 'on' ? 'Yes' : 'No', settingcode: s.component_setting.settingcode }],
+    parent_assigned_component_id: s.parent_assigned_component_id,
+    change_settings_allowed: s.change_settings_allowed,
+    return_eligible_settings: false,
+    service_id: '',
+    simulate_only: false,
+  });
+  return internetOf(p, await internetSetting(session, p));
+}
+
+// ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
 
@@ -556,7 +610,9 @@ const USAGE = `Usage: node vodafone.mjs <command> [args]
   invoice <invoiceNumber>                   invoice breakdown: subscriptions, usage, per-number totals
   pdf <invoiceNumber> [file.pdf]            download an invoice PDF
   events <invoiceNumber> <number> [voice|data|sms]
-                                            billed calls, data sessions and texts on an invoice`;
+                                            billed calls, data sessions and texts on an invoice
+  internet [number]                         whether mobile internet is on, per number
+  internet <number> on|off                  switch a number's mobile internet on or off`;
 
 async function main([cmd, ...args]) {
   const commands = { // name: [required args, run]
@@ -568,6 +624,7 @@ async function main([cmd, ...args]) {
     invoice: [1, s => invoice(s, args[0])],
     pdf: [1, s => downloadPdf(s, args[0], args[1])],
     events: [2, s => events(s, args[0], args[1], args[2])],
+    internet: [0, s => internet(s, args[0], args[1])],
   };
   if (!commands[cmd] || args.length < commands[cmd][0]) { console.error(USAGE); process.exit(1); }
   console.log(JSON.stringify(await commands[cmd][1](await login()), null, 2));

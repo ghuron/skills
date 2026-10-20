@@ -9,7 +9,7 @@ npm dependencies, plus a `SKILL.md` that tells the agent how to use it.
 | [ovpay](ovpay/SKILL.md) | OVpay public transport: cards, balances, trip history with fares, CSV export; corrects missed check-outs; turns on trip-history protection |
 | [htm](htm/SKILL.md) | HTM (Den Haag) public transport: passes, products, trips, Regio Vrij advice; puts a product in the cart, you pay |
 | [budgetthuis](budgetthuis/SKILL.md) | Budget Thuis energy: tariffs, contract, monthly instalment, invoices (PDF), usage with costs |
-| [vodafone](vodafone/SKILL.md) | Vodafone mobile: numbers, bundles left, usage and costs, invoices (PDF) with per-number breakdown and call records, PUK |
+| [vodafone](vodafone/SKILL.md) | Vodafone mobile: numbers, bundles left, usage and costs, invoices (PDF) with per-number breakdown and call records, PUK; switches mobile internet off and on per number |
 | [abn-amro](abn-amro/SKILL.md) | ABN AMRO transaction export (.TAB) to CSV, offline |
 | [ah](ah/SKILL.md) | Albert Heijn online-order invoices (PDF) to CSV, offline |
 | [epson](epson/SKILL.md) | Ink levels of an Epson Expression XP-series network printer |

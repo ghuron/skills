@@ -55,7 +55,7 @@
       "name": "vodafone",
       "source": "./",
       "skills": ["./vodafone"],
-      "description": "Vodafone Netherlands mobile: subscriptions with contract and PUK, bundles left and usage with costs, invoices with PDF download, per-number breakdown and billed call records.",
+      "description": "Vodafone Netherlands mobile: subscriptions with contract and PUK, bundles left and usage with costs, invoices with PDF download, per-number breakdown and billed call records, and switching mobile internet off or on per number.",
       "category": "home",
       "keywords": ["vodafone", "vodafoneziggo", "mobile", "phone", "data", "bundel", "invoice", "netherlands"],
       "license": "MIT-0",
