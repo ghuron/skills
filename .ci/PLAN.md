@@ -71,7 +71,7 @@ Until the box runs, nothing runs the integration tests automatically. GitHub onl
 | magister | password (parent and child accounts) | Sick report runs as a dry run (`.ci/magister/dry-run.mjs`) |
 | epson | none | Needs `EPSON_HOST`; there's no `/epson` folder in Infisical yet |
 | ecovacs | emailed code once, then a session | `login` / `login <code>` save `ECOVACS_SESSION`; tests only read, never move the robot; no `/ecovacs` folder in Infisical yet |
-| ah | none | Needs invoice PDFs in `.ci/ah/.fixtures/` (gitignored); `parse_invoice.py` needs `python3` with `pypdf` |
+| ah | browser sign-in once (captcha), then a session | `login` / `login <code>` save `AH_SESSION`; its refresh token changes on every renewal (about weekly), so like OVpay each machine signs in on its own and it doesn't go in Infisical. The `csv` test needs invoice PDFs in `.ci/ah/.fixtures/` (gitignored); `parse_invoice.py` needs `python3` with `pypdf` |
 | abn-amro | none | Offline |
 
 ## Design

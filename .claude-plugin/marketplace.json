@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
   "name": "ghuron-skills",
-  "description": "Agent skills for Dutch everyday services: Magister (school), OVpay and HTM (public transport), Budget Thuis (energy), Vodafone (mobile), ABN AMRO (bank exports), Albert Heijn (grocery invoices), Epson printer ink and Ecovacs robot vacuums.",
+  "description": "Agent skills for Dutch everyday services: Magister (school), OVpay and HTM (public transport), Budget Thuis (energy), Vodafone (mobile), ABN AMRO (bank exports), Albert Heijn (groceries), Epson printer ink and Ecovacs robot vacuums.",
   "owner": {
     "name": "ghuron",
     "url": "https://github.com/ghuron"
@@ -77,9 +77,9 @@
       "name": "ah",
       "source": "./",
       "skills": ["./ah"],
-      "description": "Albert Heijn online-order invoices (PDF) to one CSV per order, line by line.",
+      "description": "Albert Heijn: online orders with products and delivery slot, invoice PDFs, in-store receipts (kassabonnen) with Bonus discounts, payments and VAT, and invoices to one CSV per order, line by line.",
       "category": "finance",
-      "keywords": ["albert-heijn", "groceries", "invoice", "pdf", "csv", "netherlands"],
+      "keywords": ["albert-heijn", "appie", "groceries", "boodschappen", "kassabon", "receipt", "invoice", "csv", "netherlands"],
       "license": "MIT-0",
       "homepage": "https://github.com/ghuron/skills/tree/main/ah",
       "repository": "https://github.com/ghuron/skills"

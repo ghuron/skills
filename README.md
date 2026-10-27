@@ -11,7 +11,7 @@ npm dependencies, plus a `SKILL.md` that tells the agent how to use it.
 | [budgetthuis](budgetthuis/SKILL.md) | Budget Thuis energy: tariffs, contract, monthly instalment, invoices (PDF), usage with costs |
 | [vodafone](vodafone/SKILL.md) | Vodafone mobile: numbers, bundles left, usage and costs, invoices (PDF) with per-number breakdown and call records, PUK; switches mobile internet off and on per number |
 | [abn-amro](abn-amro/SKILL.md) | ABN AMRO transaction export (.TAB) to CSV, offline |
-| [ah](ah/SKILL.md) | Albert Heijn online-order invoices (PDF) to CSV, offline |
+| [ah](ah/SKILL.md) | Albert Heijn: online orders, invoices (PDF), in-store receipts with Bonus discounts; invoices to CSV |
 | [epson](epson/SKILL.md) | Ink levels of an Epson Expression XP-series network printer |
 | [ecovacs](ecovacs/SKILL.md) | Ecovacs DEEBOT robot vacuum: status, consumables, cleaning history, rooms; starts, pauses, stops and docks it |
 

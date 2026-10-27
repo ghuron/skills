@@ -24,7 +24,7 @@
     },
     {
       "title": "Money",
-      "description": "Bank exports and grocery invoices to CSV.",
+      "description": "Bank exports, grocery orders, invoices and receipts.",
       "skills": ["abn-amro", "ah"]
     },
     {
