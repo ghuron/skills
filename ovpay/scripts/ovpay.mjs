@@ -189,6 +189,12 @@ function toTrip(it) {
   };
 }
 
+// The history merges two lists (recent trips and older ones), and `offset` pages
+// through each of them separately, at most 20 items at a time: offset=0 gives
+// recent[0..19] + older[0..19]. Stepping by the batch length (40) would skip
+// recent[20..39], so step by 20 and drop the trips already seen.
+const TRIPS_PAGE = 20;
+
 /** A card's raw trip-history items, with the SecureTat token they needed (null if none). */
 async function tripItems(card) {
   const xtat = await resolve(card);
@@ -207,7 +213,7 @@ async function tripItems(card) {
     fresh.forEach(it => seen.add(it.trip?.id));
     items.push(...fresh);
     if (j.endOfListReached || fresh.length === 0) break;
-    offset += batch.length || 50;
+    offset += TRIPS_PAGE;
     r = await fetchPage(offset);
   }
   return { st, items };
