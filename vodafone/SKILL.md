@@ -2,7 +2,7 @@
 name: vodafone
 description: "Read a Vodafone Netherlands mobile account (My Vodafone, VodafoneZiggo): subscriptions, bundles and usage left, costs per number, invoices with PDF and call records, PUK and contract end date; switch mobile internet off or on per number. Use when the user asks about their Vodafone bill, data or minutes left, a number's usage or costs, a PUK code, their contract or whether to change it, or wants mobile data off or on for a phone (a child's, say)."
 license: MIT-0
-compatibility: "Requires Node.js 22+ and network access to www.vodafone.nl. Env: VODAFONE_USERNAME (the My Vodafone login, usually an email address) and VODAFONE_PASSWORD, from the environment or a .env in the skill folder (the environment wins)."
+compatibility: "Requires Node.js 22+ and network access to www.vodafone.nl and account.vodafoneziggo.nl. Env: VODAFONE_USERNAME (the My Vodafone login, usually an email address) and VODAFONE_PASSWORD, from the environment or a .env in the skill folder (the environment wins)."
 ---
 # Commands
 

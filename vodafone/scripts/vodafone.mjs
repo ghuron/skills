@@ -22,7 +22,7 @@
 
 import { fileURLToPath } from 'url';
 import { existsSync, writeFileSync } from 'fs';
-import { randomUUID } from 'crypto';
+import { createHash, randomBytes, randomUUID } from 'crypto';
 import { setTimeout as sleep } from 'timers/promises';
 
 // Credentials may also sit in a .env in the skill folder; variables already set win.
@@ -32,37 +32,49 @@ if (existsSync(ENV_FILE)) process.loadEnvFile(ENV_FILE);
 const WWW = 'https://www.vodafone.nl';
 const SSO = `${WWW}/sso`;
 const REST = `${WWW}/rest`;
-const CLIENT_ID = 'my_vodafone';
-const REDIRECT_URI = `${WWW}/account/assets/silent.html`;
-const SCOPE = 'openid hawaii_backend'; // hawaii_backend is what /rest wants; openid alone gets 401
+const AM = 'https://account.vodafoneziggo.nl/am';
+const OAUTH = `${AM}/oauth2/realms/root/realms/alpha`;
+// Where the old SSO sends client "cic" back to: ForgeRock's "Inloggen" journey
+const CIC_REDIRECT_URI = `${AM}/XUI/?realm=/alpha&authIndexType=service&authIndexValue=Inloggen`;
+// The /my app's own client and scopes (main.*.js: "my_vodafone_consumer")
+const CLIENT_ID = 'my_vodafone_consumer';
+const REDIRECT_URI = `${WWW}/my`;
+const SCOPE = 'openid contact_ids digital_identity_id email';
 const TZ = 'Europe/Amsterdam';
 // Imperva sits in front of the whole site; a browser User-Agent keeps it quiet.
 const UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36';
 
 // ---------------------------------------------------------------------------
-// Login (VodafoneZiggo SSO at www.vodafone.nl/sso, a Spring Security / MITREid
-// OpenID Connect server shared with Ziggo)
+// Login
 //
-// The website's account app (/account, Angular) logs in with an implicit flow:
-// GET /sso/authorize without a session starts one (SESSION cookie, path /sso) and
-// redirects to /account/inloggen. That page POSTs /sso/csrf for {csrf_token} and
-// submits a plain form (_csrf, j_username, j_password) to
-// /sso/j_spring_security_check. Success redirects back to the saved authorize
-// request, which redirects to redirect_uri#access_token=…&expires_in=599. A
-// failure redirects to /account/inloggen?error=failure (or almost_locked_out,
-// is_locked_out, password_expired). Accounts with two-factor login would land on
-// another page instead; untested, no account at hand has it.
+// Since 2026-10 /rest only takes tokens from ForgeRock Identity Cloud at
+// account.vodafoneziggo.nl (realm alpha), which the /my app gets with a code
+// flow. A token from the old VodafoneZiggo SSO (www.vodafone.nl/sso, a Spring
+// Security / MITREid server shared with Ziggo) gets status 500 everywhere.
+// ForgeRock doesn't check the password itself: its "Inloggen" journey signs in
+// at the old SSO as client "cic". So a login is a chain:
+//
+// 1. GET /sso/authorize for client cic without a session starts one (SESSION
+//    cookie, path /sso) and redirects to /account/inloggen. That page POSTs
+//    /sso/csrf for {csrf_token} and submits a plain form (_csrf, j_username,
+//    j_password) to /sso/j_spring_security_check. Success redirects back to the
+//    saved authorize request, which redirects to the journey's XUI page with
+//    ?code=…. A failure redirects to /account/inloggen?error=failure (or
+//    almost_locked_out, is_locked_out, password_expired). Accounts with
+//    two-factor login would land on another page instead; untested, no account
+//    at hand has it.
+// 2. POST /am/json/…/authenticate with that page's query (journey and code)
+//    answers {tokenId} and sets it as ForgeRock's session cookie.
+// 3. GET /am/oauth2/…/authorize for client my_vodafone_consumer (with PKCE)
+//    redirects to /my?code=…, which POST …/access_token swaps for a 10-minute
+//    bearer token.
 //
 // SESSION is a browser-session cookie that the server drops after ~30 minutes
 // idle, so there is nothing worth keeping: every run logs in again, which takes
-// four requests and sends no email.
-//
-// The account app also checks a ForgeRock session at account.vodafoneziggo.nl
-// (env.json `sso.cic`); VodafoneZiggo seems to be moving there, which would
-// replace this flow.
+// seven requests and sends no email.
 //
 // /my (the self-service app) can sit behind a Queue-it waiting room during
-// phone launches; /sso and /rest don't.
+// phone launches; /sso, /am and /rest don't.
 // ---------------------------------------------------------------------------
 
 /** fetch, retrying network-level failures ("fetch failed": resets, DNS hiccups) a couple of times. */
@@ -87,8 +99,9 @@ const LOGIN_ERRORS = {
 /** Log in and return {token}, a 10-minute bearer token for /rest. */
 export async function login(username = process.env.VODAFONE_USERNAME, password = process.env.VODAFONE_PASSWORD) {
   if (!username || !password) throw new Error('Set VODAFONE_USERNAME and VODAFONE_PASSWORD (the My Vodafone login).');
-  const jar = new Map();
+  const jars = {}; // per host, so each site only gets its own cookies
   const request = async (url, init = {}) => {
+    const jar = jars[new URL(url).host] ??= new Map();
     const r = await http(url, {
       ...init,
       redirect: 'manual',
@@ -104,18 +117,16 @@ export async function login(username = process.env.VODAFONE_USERNAME, password =
   const location = r => {
     const loc = r.headers.get('location');
     if (!loc) return null;
-    const url = new URL(loc, WWW);
+    const url = new URL(loc, r.url);
     if (url.host.endsWith('queue-it.net')) throw new Error('Vodafone has its Queue-it waiting room up; try again later.');
     return url;
   };
 
   const authorize = `${SSO}/authorize?${new URLSearchParams({
-    client_id: CLIENT_ID,
-    response_type: 'id_token token',
-    scope: SCOPE,
-    redirect_uri: REDIRECT_URI,
-    nonce: randomUUID(),
-    state: randomUUID(),
+    client_id: 'cic',
+    response_type: 'code',
+    scope: 'openid hawaii_sso',
+    redirect_uri: CIC_REDIRECT_URI,
   })}`;
   const start = location(await request(authorize));
   if (start?.pathname !== '/account/inloggen') {
@@ -140,9 +151,43 @@ export async function login(username = process.env.VODAFONE_USERNAME, password =
       + '(an extra step such as two-factor login is not supported)');
   }
 
-  const done = location(await request(next.href));
-  const token = new URLSearchParams(done?.hash.slice(1)).get('access_token');
-  if (!token) throw new Error(`Login flow changed: authorize after login sent us to ${done?.pathname ?? 'nowhere'}, no token`);
+  const back = location(await request(next.href));
+  if (!back?.searchParams.has('code')) {
+    throw new Error(`Login flow changed: authorize after login sent us to ${back?.pathname ?? 'nowhere'}, no code`);
+  }
+  const journey = new URLSearchParams(back.search);
+  journey.delete('realm');
+  const auth = await request(`${AM}/json/realms/root/realms/alpha/authenticate?${journey}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept-API-Version': 'resource=2.1, protocol=1.0' },
+    body: '{}',
+  });
+  if (!(auth.ok && (await auth.json()).tokenId)) {
+    throw new Error(`Login flow changed: HTTP ${auth.status} from the ForgeRock journey, no tokenId`);
+  }
+
+  const verifier = randomBytes(32).toString('base64url');
+  const code = location(await request(`${OAUTH}/authorize?${new URLSearchParams({
+    client_id: CLIENT_ID,
+    response_type: 'code',
+    scope: SCOPE,
+    redirect_uri: REDIRECT_URI,
+    nonce: randomUUID(),
+    state: randomUUID(),
+    code_challenge: createHash('sha256').update(verifier).digest('base64url'),
+    code_challenge_method: 'S256',
+  })}`))?.searchParams.get('code');
+  if (!code) throw new Error('Login flow changed: ForgeRock authorize gave no code');
+
+  const exchange = await request(`${OAUTH}/access_token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'authorization_code', code, redirect_uri: REDIRECT_URI, client_id: CLIENT_ID, code_verifier: verifier,
+    }).toString(),
+  });
+  const token = exchange.ok && (await exchange.json()).access_token;
+  if (!token) throw new Error(`Login flow changed: HTTP ${exchange.status} from ForgeRock access_token, no token`);
   return { token };
 }
 
