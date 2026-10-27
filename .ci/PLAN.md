@@ -10,7 +10,8 @@ issues or in pull requests may contain personal data (see `AGENTS.md`).
 
 ## Why not GitHub Actions
 
-`.github/workflows/integration.yml` runs on every push. It works, but it can't cover enough:
+`.github/workflows/integration.yml` ran the tests on every push until 2026-10-26, when it was deleted.
+It worked, but it couldn't cover enough:
 
 - **IP blocks.** `mijn.budgetthuis.nl` answers GitHub's runners (Microsoft network, US) with
   `403 Forbidden – Request forbidden by administrative rules`. Its login server and APIs answer
@@ -19,7 +20,8 @@ issues or in pull requests may contain personal data (see `AGENTS.md`).
 - **Mailbox.** Login flows need emailed links or codes.
 - **OVpay's token** can't be shared with an ephemeral runner (see below).
 
-The workflow currently leaves out `ovpay` and `budgetthuis`. Delete it once the box runs.
+Until the box runs, nothing runs the integration tests automatically. GitHub only runs
+`.github/workflows/spec.yml`, which checks each `SKILL.md` against the Agent Skills spec.
 
 ## Decisions
 
@@ -165,7 +167,7 @@ Run the whole job as a dedicated user on the box that has only this repo and the
 | Credential | Where | Lifetime | Renewal |
 |---|---|---|---|
 | Claude (`claude setup-token`) | box env file | long-lived (check what it prints) | owner, about yearly |
-| Infisical machine identity (Universal Auth) | GitHub secrets; box env file | no expiry (client secret TTL 0) | none |
+| Infisical machine identity (Universal Auth) | box env file | no expiry (client secret TTL 0) | none |
 | GitHub fine-grained PAT: contents, pull requests, issues (read/write), this repo only | Infisical `/` `GITHUB_TOKEN` (`pull-secrets.sh` already sets up git; export `GH_TOKEN` for `gh`) | up to 1 year | owner |
 | Gmail OAuth client and refresh token | Infisical `/gmail` | until revoked (app must be "In production") | none |
 | Budget Thuis session | Infisical `/budgetthuis` | 90 days | `renew.mjs`, automatic |
@@ -202,8 +204,8 @@ Run the whole job as a dedicated user on the box that has only this repo and the
 
 8. `.ci/systemd/` units and `bootstrap.sh` installing them. Done when
    `systemctl --user start skills-weekly` runs end to end and the timer shows next Monday.
-9. Delete `.github/workflows/integration.yml` and the `!.github/` line in `.gitignore`. Keep or
-   remove the GitHub secrets.
+9. Delete the GitHub secrets `INFISICAL_UNIVERSAL_AUTH_CLIENT_ID` and `_SECRET`: nothing has used
+   them since `integration.yml` went.
 
 ## Gotchas met so far
 

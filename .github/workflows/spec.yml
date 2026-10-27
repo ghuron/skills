@@ -1,0 +1,22 @@
+# Every skill's SKILL.md against the Agent Skills spec (https://agentskills.io/specification),
+# with its reference validator. Offline and without secrets, so it also runs on pull requests.
+name: spec
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - run: pipx install 'git+https://github.com/agentskills/agentskills@69ef37e9424c0a7ea9dd2293b559e43ec8176379#subdirectory=skills-ref'
+      - shell: bash
+        run: |
+          status=0
+          for f in */SKILL.md; do
+            skills-ref validate "${f%/SKILL.md}" || status=1
+          done
+          exit $status
