@@ -25,7 +25,7 @@
  * exchange and refresh go through api.identity.ovpay.app. Everything, `login`
  * included, is plain fetch: no browser.
  *
- * Usage: node ovpay.mjs <command> [args]
+ * Usage: node scripts/ovpay.mjs <command> [args]
  *   cards                              list cards (name, balance, status, xtat)
  *   customer                           account profile
  *   trips <card> [from] [to]           trips (card = name or xtat; dates YYYY-MM-DD, inclusive)
@@ -42,8 +42,8 @@ import { homedir } from 'os';
 import { join, dirname } from 'path';
 import { createInterface } from 'readline';
 
-// Credentials may also sit in a .env next to this file; variables already set win.
-const ENV_FILE = new URL('.env', import.meta.url);
+// Credentials may also sit in a .env in the skill folder; variables already set win.
+const ENV_FILE = new URL('../.env', import.meta.url);
 if (existsSync(ENV_FILE)) process.loadEnvFile(ENV_FILE);
 
 // Token exchange and refresh go through this identity proxy, which makes the
@@ -62,7 +62,7 @@ const STATE = process.env.OVPAY_STATE || join(homedir(), '.ovpay', 'tokens.json'
 function loadTokens() {
   if (existsSync(STATE)) return JSON.parse(readFileSync(STATE, 'utf8'));
   if (process.env.OVPAY_REFRESH_TOKEN) return { refresh_token: process.env.OVPAY_REFRESH_TOKEN };
-  throw new Error('Not logged in. Run `node ovpay.mjs login`, or set OVPAY_REFRESH_TOKEN.');
+  throw new Error('Not logged in. Run `node scripts/ovpay.mjs login`, or set OVPAY_REFRESH_TOKEN.');
 }
 
 function saveTokens(tok) {
@@ -80,7 +80,7 @@ function jwtExp(token) {
 
 export async function refresh(tok = loadTokens()) {
   const rt = tok.refresh_token;
-  if (!rt) throw new Error('No refresh token. Run `node ovpay.mjs login`.');
+  if (!rt) throw new Error('No refresh token. Run `node scripts/ovpay.mjs login`.');
   const r = await fetch(`${IDENTITY}/refresh-token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -88,7 +88,7 @@ export async function refresh(tok = loadTokens()) {
   });
   if (r.status !== 200) {
     throw new Error(`Refresh failed (${r.status}); the offline token expired or was `
-      + `revoked. Run \`node ovpay.mjs login\`.`);
+      + `revoked. Run \`node scripts/ovpay.mjs login\`.`);
   }
   const nw = await r.json();
   if (!nw.refresh_token) nw.refresh_token = rt;
@@ -142,7 +142,7 @@ async function secureTatToken(xtat) {
   const r = await api('/api/v1/SecureTat/token/refresh-token', { method: 'POST', json: { xtat } });
   if (r.status !== 200) {
     throw new Error(`No SecureTat token for ${xtat} (${r.status}). If this card is not yet `
-      + `secured, run \`node ovpay.mjs secure <card>\` (or secure it in the OVpay app).`);
+      + `secured, run \`node scripts/ovpay.mjs secure <card>\` (or secure it in the OVpay app).`);
   }
   return (await r.json()).accessToken.token;
 }

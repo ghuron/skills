@@ -14,7 +14,7 @@ import { dirname, join } from 'path';
 import { tmpdir } from 'os';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
-const CLI = join(DIR, '../../vodafone/vodafone.mjs');
+const CLI = join(DIR, '../../vodafone/scripts/vodafone.mjs');
 
 function parseEnvFile(path) {
   const vars = {};

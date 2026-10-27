@@ -7,11 +7,11 @@ compatibility: "Requires Node.js 22+ and network access to www.htm.nl and htmnlb
 # Commands
 
 ```bash
-node htm.mjs passes                                                  # passes (bank cards and OV-passen)
-node htm.mjs products <tokenId>                                      # a pass's active and inactive products
-node htm.mjs reizen <tokenId> <from> <to>                            # a pass's trips
-node htm.mjs regio-advies <tokenId>[,<tokenId>...] <from> <to> [age] # would a Regio Vrij area pass pay off?
-node htm.mjs reorder <tokenId> <productId> [validFrom]               # put a product in the cart
+node scripts/htm.mjs passes                                                  # passes (bank cards and OV-passen)
+node scripts/htm.mjs products <tokenId>                                      # a pass's active and inactive products
+node scripts/htm.mjs reizen <tokenId> <from> <to>                            # a pass's trips
+node scripts/htm.mjs regio-advies <tokenId>[,<tokenId>...] <from> <to> [age] # would a Regio Vrij area pass pay off?
+node scripts/htm.mjs reorder <tokenId> <productId> [validFrom]               # put a product in the cart
 ```
 
 `<tokenId>` is a pass's `id` from `passes`. Dates are YYYY-MM-DD, local (Europe/Amsterdam) and

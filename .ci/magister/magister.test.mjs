@@ -14,7 +14,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
 const DIR     = dirname(fileURLToPath(import.meta.url));
-const CLI     = join(DIR, '../../magister/magister.mjs');
+const CLI     = join(DIR, '../../magister/scripts/magister.mjs');
 const DRY_RUN = join(DIR, 'dry-run.mjs');
 
 // ---------------------------------------------------------------------------

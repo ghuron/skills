@@ -7,8 +7,8 @@ compatibility: "Requires Node.js 22+. Works offline on a downloaded export; no b
 # Commands
 
 ```bash
-node abn-amro.mjs <export.TAB> [--account <number>]                     # CSV to stdout
-node abn-amro.mjs <export.TAB> [--account <number>] --append <file.csv> # add rows the file doesn't have
+node scripts/abn-amro.mjs <export.TAB> [--account <number>]                     # CSV to stdout
+node scripts/abn-amro.mjs <export.TAB> [--account <number>] --append <file.csv> # add rows the file doesn't have
 ```
 
 The export is named `TXT<timestamp>.TAB`. If it holds several accounts, `--account` (the file's first

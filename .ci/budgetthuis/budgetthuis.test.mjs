@@ -14,7 +14,7 @@ import { dirname, join } from 'path';
 import { tmpdir } from 'os';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
-const CLI = join(DIR, '../../budgetthuis/budgetthuis.mjs');
+const CLI = join(DIR, '../../budgetthuis/scripts/budgetthuis.mjs');
 
 function parseEnvFile(path) {
   const vars = {};
@@ -41,7 +41,7 @@ const daysAgo = n => new Date(Date.now() - n * 86_400_000).toISOString().slice(0
 test('expired session: fails and says to run login', () => {
   const r = spawnSync('node', [CLI, 'account'], { encoding: 'utf8', env: { ...ENV, BUDGETTHUIS_SESSION: 'expired' }, timeout: 60_000 });
   assert.equal(r.status, 1);
-  assert.match(r.stderr, /run `node budgetthuis\.mjs login`/);
+  assert.match(r.stderr, /run `node scripts\/budgetthuis\.mjs login`/);
 });
 
 test('account: customer number and name', { skip }, () => {

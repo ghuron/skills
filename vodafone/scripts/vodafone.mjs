@@ -3,7 +3,7 @@
  * Vodafone NL ("My Vodafone", vodafone.nl) CLI wrapper — logs in with VODAFONE_USERNAME
  * and VODAFONE_PASSWORD on every run
  *
- * Usage: node vodafone.mjs <command> [args]
+ * Usage: node scripts/vodafone.mjs <command> [args]
  *
  * Commands:
  *   account                                   online account and billing customers
@@ -25,8 +25,8 @@ import { existsSync, writeFileSync } from 'fs';
 import { randomUUID } from 'crypto';
 import { setTimeout as sleep } from 'timers/promises';
 
-// Credentials may also sit in a .env next to this file; variables already set win.
-const ENV_FILE = new URL('.env', import.meta.url);
+// Credentials may also sit in a .env in the skill folder; variables already set win.
+const ENV_FILE = new URL('../.env', import.meta.url);
 if (existsSync(ENV_FILE)) process.loadEnvFile(ENV_FILE);
 
 const WWW = 'https://www.vodafone.nl';
@@ -656,7 +656,7 @@ export async function internet(session, which, state) {
 // CLI
 // ---------------------------------------------------------------------------
 
-const USAGE = `Usage: node vodafone.mjs <command> [args]
+const USAGE = `Usage: node scripts/vodafone.mjs <command> [args]
   account                                   online account and billing customers
   products                                  subscriptions: number, plan, status
   product <number>                          contract dates, SIM card and PUK

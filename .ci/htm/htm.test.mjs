@@ -14,10 +14,10 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import {
   login, reorder, cancelOrderline, apiGet, orderApiCall, buildRegioCatalog, REGIO_VRIJ_PRODUCT_ID,
-} from '../../htm/htm.mjs';
+} from '../../htm/scripts/htm.mjs';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
-const CLI = join(DIR, '../../htm/htm.mjs');
+const CLI = join(DIR, '../../htm/scripts/htm.mjs');
 
 // "HTM 20% Korting" — already an orderable product on the account these .env
 // files belong to. Adjust if testing against a different account.
@@ -42,7 +42,7 @@ function parseEnvFile(path) {
   return vars;
 }
 
-/** Spawn `node htm.mjs <args>` with the given env vars. */
+/** Spawn `node scripts/htm.mjs <args>` with the given env vars. */
 function runCLI(args, envVars = {}) {
   const result = spawnSync('node', [CLI, ...args], {
     encoding: 'utf8',
@@ -233,11 +233,11 @@ test(
       orderApiCall(session, 'GET', `/v3/order/product/regions/${REGIO_VRIJ_PRODUCT_ID}`),
     ]);
     const live = buildRegioCatalog(wipkip, regionPrices);
-    const bundled = JSON.parse(readFileSync(join(DIR, '../../htm/regio-catalog.json'), 'utf8'));
+    const bundled = JSON.parse(readFileSync(join(DIR, '../../htm/assets/regio-catalog.json'), 'utf8'));
     assert.deepStrictEqual(
       live,
       bundled,
-      'htm/regio-catalog.json is stale — run `node .ci/htm/refresh.mjs` and commit the diff.'
+      'htm/assets/regio-catalog.json is stale — run `node .ci/htm/refresh.mjs` and commit the diff.'
     );
   }
 );

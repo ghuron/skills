@@ -16,7 +16,7 @@ import { dirname, join } from 'path';
 import { homedir } from 'os';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
-const CLI = join(DIR, '../../ovpay/ovpay.mjs');
+const CLI = join(DIR, '../../ovpay/scripts/ovpay.mjs');
 const STATE = process.env.OVPAY_STATE || join(homedir(), '.ovpay', 'tokens.json');
 
 function parseEnvFile(path) {

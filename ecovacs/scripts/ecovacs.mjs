@@ -4,7 +4,7 @@
  * app does; reads the session from ECOVACS_SESSION (set by `login`); ECOVACS_EMAIL is the
  * account's email address, used only by `login`
  *
- * Usage: node ecovacs.mjs <command> [args]
+ * Usage: node scripts/ecovacs.mjs <command> [args]
  *
  * Commands:
  *   login                    email a verification code to ECOVACS_EMAIL
@@ -27,8 +27,8 @@ import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { createHash, createPublicKey, publicEncrypt, constants } from 'crypto';
 import { setTimeout as sleep } from 'timers/promises';
 
-// Credentials may also sit in a .env next to this file; variables already set win.
-const ENV_FILE = new URL('.env', import.meta.url);
+// Credentials may also sit in a .env in the skill folder; variables already set win.
+const ENV_FILE = new URL('../.env', import.meta.url);
 if (existsSync(ENV_FILE)) process.loadEnvFile(ENV_FILE);
 
 const EMAIL = process.env.ECOVACS_EMAIL;
@@ -94,9 +94,9 @@ function sign(params, extra, { key, secret }) {
 }
 
 const ACCOUNT_ERRORS = {
-  '0004': 'The Ecovacs session has expired: run `node ecovacs.mjs login`.',
-  1012: 'Ecovacs rejected the verification code (wrong or older than 24 hours): run `node ecovacs.mjs login` for a new one.',
-  1013: 'Ecovacs wants this device verified again: run `node ecovacs.mjs login`.',
+  '0004': 'The Ecovacs session has expired: run `node scripts/ecovacs.mjs login`.',
+  1012: 'Ecovacs rejected the verification code (wrong or older than 24 hours): run `node scripts/ecovacs.mjs login` for a new one.',
+  1013: 'Ecovacs wants this device verified again: run `node scripts/ecovacs.mjs login`.',
 };
 
 /** GET on the account API; returns `data`, throws on any code but 0000. */
@@ -158,7 +158,7 @@ export async function verifyCode(code, email = EMAIL) {
   return [deviceId, data.uid, data.accessToken].join(':');
 }
 
-/** Writes ECOVACS_SESSION into the .env next to this file, keeping its other lines. */
+/** Writes ECOVACS_SESSION into the skill folder's .env, keeping its other lines. */
 function saveSession(session) {
   const file = fileURLToPath(ENV_FILE);
   const lines = (existsSync(file) ? readFileSync(file, 'utf8') : '').split('\n')
@@ -185,7 +185,7 @@ const auth = s => ({ with: 'users', userid: s.userid, realm: REALM, token: s.tok
 /** Turn the session into a portal token; returns {userid, token, resource}. */
 export async function login(session = process.env.ECOVACS_SESSION) {
   const [deviceId, uid, accessToken] = session?.split(':') ?? [];
-  if (!accessToken) throw new Error('No ECOVACS_SESSION: run `node ecovacs.mjs login`.');
+  if (!accessToken) throw new Error('No ECOVACS_SESSION: run `node scripts/ecovacs.mjs login`.');
   const { authCode } = await accountApi(`${AUTH_API}/v1/global/auth/getAuthCode`, sign(
     { uid, accessToken, bizType: 'ECOVACS_IOT', deviceId, authTimespan: Date.now() }, { openId: 'global' }, AUTH_CLIENT));
   for (let attempt = 1; ; attempt++) {
@@ -492,7 +492,7 @@ async function set(s, setting, level) {
 // CLI
 // ---------------------------------------------------------------------------
 
-const USAGE = `Usage: node ecovacs.mjs <command> [args]
+const USAGE = `Usage: node scripts/ecovacs.mjs <command> [args]
   login                    email a verification code to ECOVACS_EMAIL
   login <code>             verify with that code; saves ECOVACS_SESSION to .env
   robots                   robots on the account: name, model, online

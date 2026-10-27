@@ -2,7 +2,7 @@
 /**
  * Epson EWS ink-level CLI — reads the printer's embedded web server (no auth, LAN only).
  *
- * Usage: node epson.mjs <command>
+ * Usage: node scripts/epson.mjs <command>
  *
  * Commands:
  *   ink   list remaining ink cartridge levels as JSON
@@ -14,8 +14,8 @@ import { fileURLToPath } from 'url';
 import { existsSync } from 'fs';
 import https from 'https';
 
-// EPSON_HOST may also sit in a .env next to this file; variables already set win.
-const ENV_FILE = new URL('.env', import.meta.url);
+// EPSON_HOST may also sit in a .env in the skill folder; variables already set win.
+const ENV_FILE = new URL('../.env', import.meta.url);
 if (existsSync(ENV_FILE)) process.loadEnvFile(ENV_FILE);
 
 const HOST = process.env.EPSON_HOST;

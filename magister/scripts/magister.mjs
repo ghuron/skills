@@ -3,7 +3,7 @@
  * Magister CLI wrapper — reads credentials from environment variables:
  *   MAGISTER_HOST, MAGISTER_USER, MAGISTER_PASSWORD
  *
- * Usage: node magister.mjs <command> [args]
+ * Usage: node scripts/magister.mjs <command> [args]
  *
  * Commands:
  *   students                        list students (works for both parent and child credentials)
@@ -18,8 +18,8 @@
 import { fileURLToPath } from 'url';
 import { existsSync } from 'fs';
 
-// Credentials may also sit in a .env next to this file; variables already set win.
-const ENV_FILE = new URL('.env', import.meta.url);
+// Credentials may also sit in a .env in the skill folder; variables already set win.
+const ENV_FILE = new URL('../.env', import.meta.url);
 if (existsSync(ENV_FILE)) process.loadEnvFile(ENV_FILE);
 
 // Normalize host: strip protocol and trailing slash so it is just the FQDN

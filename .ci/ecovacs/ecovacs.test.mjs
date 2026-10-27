@@ -13,7 +13,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
-const CLI = join(DIR, '../../ecovacs/ecovacs.mjs');
+const CLI = join(DIR, '../../ecovacs/scripts/ecovacs.mjs');
 
 function parseEnvFile(path) {
   const vars = {};
@@ -44,20 +44,20 @@ const isNum = x => typeof x === 'number' && Number.isFinite(x);
 test('no session: fails and says to log in', () => {
   const r = run(['status'], { ...ENV, ECOVACS_SESSION: '' });
   assert.equal(r.status, 1);
-  assert.match(r.stderr, /run `node ecovacs\.mjs login`/);
+  assert.match(r.stderr, /run `node scripts\/ecovacs\.mjs login`/);
 });
 
 // A made-up session, so the real one is never touched.
 test('rejected session: fails and says to log in again', () => {
   const r = run(['status'], { ...ENV, ECOVACS_SESSION: `${'0'.repeat(32)}:nouser:${'f'.repeat(32)}` });
   assert.equal(r.status, 1);
-  assert.match(r.stderr, /session has expired: run `node ecovacs\.mjs login`/);
+  assert.match(r.stderr, /session has expired: run `node scripts\/ecovacs\.mjs login`/);
 });
 
 test('unknown command: prints usage', () => {
   const r = run(['notacommand']);
   assert.equal(r.status, 1);
-  assert.match(r.stderr, /Usage: node ecovacs\.mjs/);
+  assert.match(r.stderr, /Usage: node scripts\/ecovacs\.mjs/);
 });
 
 test('robots: at least one, with name, model, id and online', { skip }, () => {

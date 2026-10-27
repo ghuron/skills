@@ -1,24 +1,24 @@
 ---
 name: vodafone
-description: "Read a Vodafone Netherlands mobile account (My Vodafone, vodafone.nl, VodafoneZiggo) and switch mobile internet on or off per number: subscriptions per phone number with plan, contract end date, SIM card and PUK code; bundles left this period (data, minutes, SMS, EU roaming and daily allowances) with usage and out-of-bundle costs; invoices with amounts, due dates and PDF download, an invoice's breakdown per number, and its billed calls, data sessions and texts; whether mobile internet (data) is on per number, and switching it off or back on (the Blokkeren page). Use when the user asks about their Vodafone bill, mobile data or minutes left, phone usage or costs per number (each number's subscription, usage and credit lines), a PUK code, contract end date, whether to change or cancel a Vodafone subscription, or wants to turn mobile data off or on for a phone (a child's, say)."
+description: "Read a Vodafone Netherlands mobile account (My Vodafone, VodafoneZiggo): subscriptions, bundles and usage left, costs per number, invoices with PDF and call records, PUK and contract end date; switch mobile internet off or on per number. Use when the user asks about their Vodafone bill, data or minutes left, a number's usage or costs, a PUK code, their contract or whether to change it, or wants mobile data off or on for a phone (a child's, say)."
 license: MIT-0
 compatibility: "Requires Node.js 22+ and network access to www.vodafone.nl. Env: VODAFONE_USERNAME (the My Vodafone login, usually an email address) and VODAFONE_PASSWORD, from the environment or a .env in the skill folder (the environment wins)."
 ---
 # Commands
 
 ```bash
-node vodafone.mjs account                                # online account, billing customers, contact details
-node vodafone.mjs products                               # subscriptions: number, productId, plan, status
-node vodafone.mjs product <number>                       # contract start/end, SIM (ICCID, state, PUK)
-node vodafone.mjs usage [number]                         # current period: bundles, daily allowances, usage; all numbers by default
-node vodafone.mjs invoices                               # invoices, newest first, with open balance and payment method
-node vodafone.mjs invoice <invoiceNumber>                # breakdown: subscriptions, usage charges, total per number
-node vodafone.mjs invoice <invoiceNumber> <number>       # one number's lines: subscriptions, usage per kind, credits
-node vodafone.mjs pdf <invoiceNumber> [file.pdf]         # download the invoice PDF (default <invoiceNumber>.pdf)
-node vodafone.mjs events <invoiceNumber> <number> [voice|data|sms]
-                                                         # billed calls, data sessions and texts, oldest first
-node vodafone.mjs internet [number]                      # whether mobile internet is on; all numbers by default
-node vodafone.mjs internet <number> on|off               # switch a number's mobile internet on or off
+node scripts/vodafone.mjs account                                # online account, billing customers, contact details
+node scripts/vodafone.mjs products                               # subscriptions: number, productId, plan, status
+node scripts/vodafone.mjs product <number>                       # contract start/end, SIM (ICCID, state, PUK)
+node scripts/vodafone.mjs usage [number]                         # current period: bundles, daily allowances, usage; all numbers by default
+node scripts/vodafone.mjs invoices                               # invoices, newest first, with open balance and payment method
+node scripts/vodafone.mjs invoice <invoiceNumber>                # breakdown: subscriptions, usage charges, total per number
+node scripts/vodafone.mjs invoice <invoiceNumber> <number>       # one number's lines: subscriptions, usage per kind, credits
+node scripts/vodafone.mjs pdf <invoiceNumber> [file.pdf]         # download the invoice PDF (default <invoiceNumber>.pdf)
+node scripts/vodafone.mjs events <invoiceNumber> <number> [voice|data|sms]
+                                                                 # billed calls, data sessions and texts, oldest first
+node scripts/vodafone.mjs internet [number]                      # whether mobile internet is on; all numbers by default
+node scripts/vodafone.mjs internet <number> on|off               # switch a number's mobile internet on or off
 ```
 
 `<number>` is a phone number in any notation (`0612345678`, `+31612345678`) or a `productId`

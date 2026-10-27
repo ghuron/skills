@@ -1,6 +1,6 @@
 """Turn Albert Heijn online-order invoices (PDF) into <order number>.csv files.
 
-Usage: python3 parse_invoice.py [--force] [--out DIR] PDF_OR_DIR...
+Usage: python3 scripts/parse_invoice.py [--force] [--out DIR] PDF_OR_DIR...
 
 Reads the given PDFs (or every *.pdf in a given folder) and writes each order's CSV to --out,
 or next to its PDF. Orders that already have a CSV are skipped so hand-written notes survive;

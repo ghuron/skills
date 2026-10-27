@@ -2,7 +2,7 @@
 /**
  * ABN AMRO transaction export (.TAB) -> CSV.
  *
- * Usage: node abn-amro.mjs <export.TAB> [--account <number>] [--append <file.csv>]
+ * Usage: node scripts/abn-amro.mjs <export.TAB> [--account <number>] [--append <file.csv>]
  *
  * Without --append the rows go to stdout. With --append, only rows the file doesn't have yet
  * (same Date, Amount and Balance After) are added at its end. Columns the file has beyond the
@@ -181,7 +181,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const target = opt('--append');
   const [file] = args;
   if (!file) {
-    console.error('Usage: node abn-amro.mjs <export.TAB> [--account <number>] [--append <file.csv>]');
+    console.error('Usage: node scripts/abn-amro.mjs <export.TAB> [--account <number>] [--append <file.csv>]');
     process.exit(1);
   }
 

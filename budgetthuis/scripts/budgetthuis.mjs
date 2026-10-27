@@ -4,7 +4,7 @@
  * reads the session from BUDGETTHUIS_SESSION (set by `login`); BUDGETTHUIS_LOGIN is the
  * account's email address, used only by `login`
  *
- * Usage: node budgetthuis.mjs <command> [args]
+ * Usage: node scripts/budgetthuis.mjs <command> [args]
  *
  * Commands:
  *   login                            email a login link to BUDGETTHUIS_LOGIN
@@ -22,8 +22,8 @@
 import { fileURLToPath } from 'url';
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 
-// Credentials may also sit in a .env next to this file; variables already set win.
-const ENV_FILE = new URL('.env', import.meta.url);
+// Credentials may also sit in a .env in the skill folder; variables already set win.
+const ENV_FILE = new URL('../.env', import.meta.url);
 if (existsSync(ENV_FILE)) process.loadEnvFile(ENV_FILE);
 
 const LOGIN = process.env.BUDGETTHUIS_LOGIN;
@@ -172,7 +172,7 @@ export async function completeLink(link) {
   return { session, expires: b.expiry.get(SESSION_COOKIE)?.toISOString().slice(0, 10) ?? null };
 }
 
-/** Writes BUDGETTHUIS_SESSION into the .env next to this file, keeping its other lines. */
+/** Writes BUDGETTHUIS_SESSION into the skill folder's .env, keeping its other lines. */
 function saveSession(session) {
   const file = fileURLToPath(ENV_FILE);
   const lines = (existsSync(file) ? readFileSync(file, 'utf8') : '').split('\n')
@@ -188,7 +188,7 @@ function saveSession(session) {
  * when the session itself is rejected.
  */
 export async function login(session = process.env.BUDGETTHUIS_SESSION) {
-  if (!session) throw new Error('No BUDGETTHUIS_SESSION: run `node budgetthuis.mjs login`.');
+  if (!session) throw new Error('No BUDGETTHUIS_SESSION: run `node scripts/budgetthuis.mjs login`.');
   for (let attempt = 1; ; attempt++) {
     try {
       return await loginOnce(session);
@@ -204,7 +204,7 @@ async function loginOnce(session) {
   const home = await b.follow(`${PORTAL}/energie/overzicht`);
   const { origin, host } = new URL(home.url);
   if (origin === ACCOUNTS) {
-    throw Object.assign(new Error('The Budget Thuis session has expired: run `node budgetthuis.mjs login`.'), { rejected: true });
+    throw Object.assign(new Error('The Budget Thuis session has expired: run `node scripts/budgetthuis.mjs login`.'), { rejected: true });
   }
   if (origin !== PORTAL || !home.r.ok) {
     throw new Error(`Login flow changed: ended on HTTP ${home.r.status} ${home.url.split('?')[0]} instead of the portal`);
@@ -520,7 +520,7 @@ export async function usage(session, from, to, resolution = 'day', contractId) {
 // CLI
 // ---------------------------------------------------------------------------
 
-const USAGE = `Usage: node budgetthuis.mjs <command> [args]
+const USAGE = `Usage: node scripts/budgetthuis.mjs <command> [args]
   login                            email a login link to BUDGETTHUIS_LOGIN
   login <link>                     sign in with that link; saves BUDGETTHUIS_SESSION to .env
   account                          customer number, name, address, masked contact/bank details

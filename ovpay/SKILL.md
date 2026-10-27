@@ -1,21 +1,21 @@
 ---
 name: ovpay
-description: "Read an OVpay account (check in and out with a bank card or OV-pas on Dutch public transport: trains, trams, buses, metro; ovpay.nl): cards, balances, profile and full trip history with fares, and export trips to CSV, for example for expense claims or travel-cost overviews; finds missed check-outs (uitchecken vergeten) and corrects them to the stop where the traveller got off; can also turn on trip-history protection (SecureTat) for a card. Use when the user asks about Dutch public transport trips, OV costs, check-ins and check-outs, a forgotten check-out or a too-high fare, or OVpay travel history."
+description: "Read an OVpay account (checking in and out with a bank card or OV-pas on Dutch trains, trams, buses and metro): cards, balances, trip history with fares, CSV export; finds and corrects missed check-outs (uitchecken vergeten); turns on trip-history protection. Use when the user asks about Dutch public transport trips or costs, travel expense claims, a forgotten check-out or a too-high fare, or OVpay history."
 license: MIT-0
 compatibility: "Requires Node.js 22+ and network access to api.ovpay.app and api.identity.ovpay.app (login.ovpay.nl for `login`). Env: OVPAY_REFRESH_TOKEN (seed token), OVPAY_STATE (token file, default ~/.ovpay/tokens.json), OVPAY_EMAIL and OVPAY_PASSWORD (optional, for `login`), from the environment or a .env in the skill folder (the environment wins)."
 ---
 # Commands
 
 ```bash
-node ovpay.mjs cards                                 # name, xtat, balance (EUR), status
-node ovpay.mjs customer                              # account profile
-node ovpay.mjs trips <card> [from] [to]              # trips, newest first; no dates = full history
-node ovpay.mjs export <card> <file.csv> [from] [to]  # trips to CSV; prints {file, trips}
-node ovpay.mjs get <path>                            # raw GET against https://api.ovpay.app
-node ovpay.mjs correction <card> <tripId>            # can a missed check-out be corrected; stops to choose
-node ovpay.mjs correct <card> <tripId> <stop>        # correct it to that stop (name or code); see below
-node ovpay.mjs secure <card>                         # turn on trip-history protection (SecureTat; emailed code)
-node ovpay.mjs login                                 # one-time login (emailed code)
+node scripts/ovpay.mjs cards                                 # name, xtat, balance (EUR), status
+node scripts/ovpay.mjs customer                              # account profile
+node scripts/ovpay.mjs trips <card> [from] [to]              # trips, newest first; no dates = full history
+node scripts/ovpay.mjs export <card> <file.csv> [from] [to]  # trips to CSV; prints {file, trips}
+node scripts/ovpay.mjs get <path>                            # raw GET against https://api.ovpay.app
+node scripts/ovpay.mjs correction <card> <tripId>            # can a missed check-out be corrected; stops to choose
+node scripts/ovpay.mjs correct <card> <tripId> <stop>        # correct it to that stop (name or code); see below
+node scripts/ovpay.mjs secure <card>                         # turn on trip-history protection (SecureTat; emailed code)
+node scripts/ovpay.mjs login                                 # one-time login (emailed code)
 ```
 
 `<card>` is a `name` (as personalised in the app, e.g. `Emma`) or `xtat` from `cards`. Dates are

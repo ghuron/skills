@@ -7,7 +7,7 @@ compatibility: "Requires Node.js 22+ and the printer on the local network; set E
 # Commands
 
 ```bash
-node epson.mjs ink   # [{"color": "Black", "level": 72}, ...]
+node scripts/epson.mjs ink   # [{"color": "Black", "level": 72}, ...]
 ```
 
 `level` is the percentage left, or `null` if the printer doesn't report it.

@@ -12,10 +12,10 @@ import { spawnSync } from 'child_process';
 import { readFileSync, readdirSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { parseInkLevels } from '../../epson/epson.mjs';
+import { parseInkLevels } from '../../epson/scripts/epson.mjs';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
-const CLI = join(DIR, '../../epson/epson.mjs');
+const CLI = join(DIR, '../../epson/scripts/epson.mjs');
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -34,7 +34,7 @@ function parseEnvFile(path) {
   return vars;
 }
 
-/** Spawn `node epson.mjs <args>` with the given env vars. */
+/** Spawn `node scripts/epson.mjs <args>` with the given env vars. */
 function runCLI(args, envVars = {}) {
   const result = spawnSync('node', [CLI, ...args], {
     encoding: 'utf8',

@@ -1,25 +1,25 @@
 ---
 name: ecovacs
-description: "Read and control an Ecovacs DEEBOT robot vacuum and mop through the Ecovacs cloud, as the ECOVACS HOME app does: state (cleaning, paused, returning, docked, washing or drying the mop at an OMNI station), battery, errors, suction and mopping water level, the running or last job, cleaning history, rooms on the map, and consumables (main and side brush, filter, mop pads, dust bag) with percent and hours left; start cleaning the whole home or chosen rooms, pause, resume, stop, send it back to the dock, make it say \"I'm here\", set suction power and water level. Use when the user asks about their robot vacuum, DEEBOT or Ecovacs, wants it to vacuum or mop (everywhere or some rooms), pause, stop or go home, asks whether it's done, stuck or charged, when it last cleaned, or which brush, filter, mop pad or dust bag to replace."
+description: "Read and control an Ecovacs DEEBOT robot vacuum and mop: status, battery, errors, cleaning history, rooms, and how long brushes, filter, mop pads and dust bag have left; start cleaning everywhere or chosen rooms, pause, stop, send it to the dock, set suction and water. Use when the user asks about their robot vacuum, DEEBOT or Ecovacs, wants it to vacuum or mop, stop or go home, asks whether it's done, stuck or charged, or which part to replace."
 license: MIT-0
-compatibility: "Requires Node.js 22+ and network access to gl-nl-api.ecovacs.com, gl-nl-openapi.ecovacs.com and portal-eu.ecouser.net; an Ecovacs account registered in the Netherlands, and a DEEBOT on Ecovacs' current (MQTT) platform, not the Deebot 900 / Ozmo 930 era XMPP one. Tested on the DEEBOT X1 OMNI. Env: ECOVACS_SESSION (set by `login`), ECOVACS_EMAIL (the account's email address, for `login`), and ECOVACS_ROBOT (a robot's name or id) when the account has several, from the environment or a .env in the skill folder (the environment wins)."
+compatibility: "Requires Node.js 22+ and network access to gl-nl-api.ecovacs.com, gl-nl-openapi.ecovacs.com and portal-eu.ecouser.net; an Ecovacs account registered in the Netherlands and a DEEBOT on the current (MQTT) platform, not the older XMPP one (Deebot 900, Ozmo 930). Tested on the DEEBOT X1 OMNI. Env: ECOVACS_SESSION (set by `login`), ECOVACS_EMAIL (for `login`) and ECOVACS_ROBOT (name or id, if several), from the environment or a .env in the skill folder (the environment wins)."
 ---
 # Commands
 
 ```bash
-node ecovacs.mjs login                  # email a verification code to ECOVACS_EMAIL
-node ecovacs.mjs login <code>           # verify with the emailed code; saves the session
-node ecovacs.mjs robots                 # robots on the account: name, model, id, online
-node ecovacs.mjs status                 # state, battery, errors, suction, water, job, station
-node ecovacs.mjs consumables            # parts with percent and cleaning hours left
-node ecovacs.mjs history [count]        # cleaning jobs, newest first (default 10)
-node ecovacs.mjs rooms                  # rooms on the map in use: id, name
-node ecovacs.mjs clean [room,...]       # start cleaning the whole home, or rooms by id: clean 0,2
-node ecovacs.mjs pause | resume | stop  # the running job
-node ecovacs.mjs dock                   # go back to the station
-node ecovacs.mjs locate                 # the robot says "I'm here"
-node ecovacs.mjs suction <level>        # quiet, standard, max or max+
-node ecovacs.mjs water <level>          # low, medium, high or ultrahigh mopping water
+node scripts/ecovacs.mjs login                  # email a verification code to ECOVACS_EMAIL
+node scripts/ecovacs.mjs login <code>           # verify with the emailed code; saves the session
+node scripts/ecovacs.mjs robots                 # robots on the account: name, model, id, online
+node scripts/ecovacs.mjs status                 # state, battery, errors, suction, water, job, station
+node scripts/ecovacs.mjs consumables            # parts with percent and cleaning hours left
+node scripts/ecovacs.mjs history [count]        # cleaning jobs, newest first (default 10)
+node scripts/ecovacs.mjs rooms                  # rooms on the map in use: id, name
+node scripts/ecovacs.mjs clean [room,...]       # start cleaning the whole home, or rooms by id: clean 0,2
+node scripts/ecovacs.mjs pause | resume | stop  # the running job
+node scripts/ecovacs.mjs dock                   # go back to the station
+node scripts/ecovacs.mjs locate                 # the robot says "I'm here"
+node scripts/ecovacs.mjs suction <level>        # quiet, standard, max or max+
+node scripts/ecovacs.mjs water <level>          # low, medium, high or ultrahigh mopping water
 ```
 
 Every command prints JSON. `clean`, `pause`, `resume`, `stop`, `dock` and `locate` make the robot
@@ -32,8 +32,8 @@ The robot listens on no port; everything goes through the Ecovacs cloud. Ecovacs
 client by email: `login` gets a code sent from noreply@support.ecovacs.com, subject "ECOVACS
 verification code" (valid 24 hours), and `login <code>` saves the session as `ECOVACS_SESSION` in the
 skill's `.env`. No password is needed, and the session can be copied to other machines. How long it
-lasts is not known yet. Once it stops working, commands fail with "run `node
-ecovacs.mjs login`". Ecovacs limits how many code emails it sends, so don't ask for codes in a loop.
+lasts is not known yet. Once it stops working, commands fail with "run `node scripts/ecovacs.mjs
+login`". Ecovacs limits how many code emails it sends, so don't ask for codes in a loop.
 
 # Output notes
 

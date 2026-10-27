@@ -7,7 +7,7 @@ compatibility: "Requires Node.js 22+, Python 3 and pypdf (pip install pypdf). Wo
 # Commands
 
 ```bash
-node ah.mjs csv [--force] [--out <dir>] <pdf|dir>...   # invoice PDFs -> <order number>.csv
+node scripts/ah.mjs csv [--force] [--out <dir>] <pdf|dir>...   # invoice PDFs -> <order number>.csv
 ```
 
 A directory means every `*.pdf` in it. Each order goes to `<order number>.csv` in `--out`, or next to

@@ -2,7 +2,7 @@
 /**
  * Albert Heijn CLI.
  *
- * Usage: node ah.mjs <command> [args]
+ * Usage: node scripts/ah.mjs <command> [args]
  *
  * Commands:
  *   csv [--force] [--out <dir>] <pdf|dir>...   invoice (factuur) PDFs -> <order number>.csv
@@ -28,7 +28,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     case 'csv':
       process.exit(invoiceCsv(rest));
     default:
-      console.error('Usage: node ah.mjs csv [--force] [--out <dir>] <pdf|dir>...');
+      console.error('Usage: node scripts/ah.mjs csv [--force] [--out <dir>] <pdf|dir>...');
       process.exit(1);
   }
 }

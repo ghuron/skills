@@ -7,13 +7,13 @@ compatibility: "Requires Node.js 22+ and network access to accounts.magister.net
 # Commands
 
 ```bash
-node magister.mjs students                       # each student's id and aanmelding_id
-node magister.mjs schedule <id> <from> <to>      # lessons with homework and tests, YYYY-MM-DD dates
-node magister.mjs grades <aanmelding_id> [top]   # grades (default top=50)
-node magister.mjs infractions <id> <from> <to>   # absences
-node magister.mjs messages [top]                 # inbox (default top=25)
-node magister.mjs message <id>                   # one message: body, recipients, attachment names
-node magister.mjs report-sick <id> <date> [note] # report sick (ziekmelding)
+node scripts/magister.mjs students                       # each student's id and aanmelding_id
+node scripts/magister.mjs schedule <id> <from> <to>      # lessons with homework and tests, YYYY-MM-DD dates
+node scripts/magister.mjs grades <aanmelding_id> [top]   # grades (default top=50)
+node scripts/magister.mjs infractions <id> <from> <to>   # absences
+node scripts/magister.mjs messages [top]                 # inbox (default top=25)
+node scripts/magister.mjs message <id>                   # one message: body, recipients, attachment names
+node scripts/magister.mjs report-sick <id> <date> [note] # report sick (ziekmelding)
 ```
 
 `messages` and `message` read the inbox of whoever is logged in, and never mark a message as read.

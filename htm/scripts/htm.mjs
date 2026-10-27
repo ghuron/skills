@@ -4,7 +4,7 @@
  * from environment variables: HTM_LOGIN, HTM_PASSWORD, and optionally
  * HTM_BIRTHDATE_<tokenId> (YYYY-MM-DD) for age-based products on that pass
  *
- * Usage: node htm.mjs <command> [args]
+ * Usage: node scripts/htm.mjs <command> [args]
  *
  * Commands:
  *   passes                                       list passes (bank cards and OV-passen)
@@ -16,8 +16,8 @@
 import { fileURLToPath } from 'url';
 import { existsSync, readFileSync } from 'fs';
 
-// Credentials may also sit in a .env next to this file; variables already set win.
-const ENV_FILE = new URL('.env', import.meta.url);
+// Credentials may also sit in a .env in the skill folder; variables already set win.
+const ENV_FILE = new URL('../.env', import.meta.url);
 if (existsSync(ENV_FILE)) process.loadEnvFile(ENV_FILE);
 
 const LOGIN = process.env.HTM_LOGIN;
@@ -293,7 +293,7 @@ export async function reizen(session, tokenId, from, to) {
 // regioAdvies — is a "Regio Vrij" (Den Haag/Delft/Zoetermeer area flat-rate)
 // subscription worth it for one or more passes, based on actual trip history?
 //
-// Prices and region/stop membership are read from the bundled regio-catalog.json
+// Prices and region/stop membership are read from the bundled assets/regio-catalog.json
 // rather than fetched live, since the source data — /v1/wipkip/getdata (the
 // data behind the webshop's "Reisgebied bepalen" map tool: region polygons
 // plus ~1250 stops' coordinates, keyed by the same stopId trips carry in
@@ -325,7 +325,7 @@ export async function reizen(session, tokenId, from, to) {
 
 export const REGIO_VRIJ_PRODUCT_ID = 6;
 
-const CATALOG_PATH = new URL('./regio-catalog.json', import.meta.url);
+const CATALOG_PATH = new URL('../assets/regio-catalog.json', import.meta.url);
 const regioCatalog = () => JSON.parse(readFileSync(CATALOG_PATH, 'utf8'));
 
 /** Ray-casting point-in-polygon test. point/ring are [lng, lat] pairs. */
