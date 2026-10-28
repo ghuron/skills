@@ -5,8 +5,9 @@ that need the owner's mailbox. When a skill breaks because a service changed, Cl
 subscription) fixes it and opens a pull request. Anything it can't fix, or that needs a human, becomes
 a GitHub issue.
 
-Status: the design is agreed, nothing in it is built yet. The repo is public, so nothing in this file, in
-issues or in pull requests may contain personal data (see `AGENTS.md`).
+Status: the box runs every skill's tests each Monday and reports to WhatsApp (see "The box today").
+Renewals, the mail helper and the Claude fixer are not built yet. The repo is public, so nothing in this
+file, in issues or in pull requests may contain personal data (see `AGENTS.md`).
 
 ## Why not GitHub Actions
 
@@ -20,15 +21,16 @@ It worked, but it couldn't cover enough:
 - **Mailbox.** Login flows need emailed links or codes.
 - **OVpay's token** can't be shared with an ephemeral runner (see below).
 
-Until the box runs, nothing runs the integration tests automatically. GitHub only runs
-`.github/workflows/spec.yml`, which checks each `SKILL.md` against the Agent Skills spec.
+GitHub only runs `.github/workflows/spec.yml`, which checks each `SKILL.md` against the Agent Skills
+spec. The integration tests run on the box.
 
 ## Decisions
 
 | Topic | Decision |
 |---|---|
 | Where | A Linux box at home (residential Dutch IP, on the LAN) |
-| When | Mondays ~03:00 Europe/Amsterdam, systemd timer |
+| When | Mondays 03:00 Europe/Amsterdam, a Hermes Agent cron job |
+| Report | One message per run to the owner's WhatsApp self-chat, through Hermes |
 | Claude | `claude -p` on the owner's subscription, via `claude setup-token` |
 | Fixes | On a branch, as a pull request; never pushed to `main` unreviewed |
 | Mailbox | Gmail API, read-only scope, through a helper script; Claude never reads mail itself |
@@ -130,21 +132,20 @@ claude.ai connectors exist in headless mode (unverified).
 
 ### The weekly job (evolve `.ci/run.sh`)
 
-1. `flock` so runs never overlap. `git checkout main && git pull --ff-only`.
-2. `source .ci/pull-secrets.sh`. Machine identity credentials come from the systemd
-   `EnvironmentFile`.
+1. ~~`flock` so runs never overlap. `git pull --ff-only`.~~ Done.
+2. ~~`pull-secrets.sh`, with the machine identity from `~/.config/skills-ci/env`.~~ Done.
 3. Renewals: `budgetthuis/renew.mjs`, `ovpay/relogin.mjs`.
-4. Run every skill's tests and keep the results per skill.
+4. ~~Run every skill's tests and keep the results per skill.~~ Done.
 5. For each failing skill:
    - static-data refresh if there is one (HTM)
    - otherwise Claude on branch `ci/fix-<skill>-<YYYY-MM-DD>`
    - re-run its tests; if green, push the branch and run `gh pr create`
    - if not, open or update an issue for that skill with test names only (public!)
-6. Post a summary (skill: pass/fail/renewed/fixed) as a comment on one pinned "Weekly run" issue.
-   A week with no comment means the box didn't run.
+6. ~~Post a summary (skill: pass/fail/renewed/fixed).~~ Done: `run.sh` prints it and Hermes sends it
+   to WhatsApp, instead of a comment on a pinned issue.
 
-The Claude fix step today (`--allowedTools "Edit,Bash" --max-turns 10`) is too small for real
-breakage. The Budget Thuis fix took probing the login server, an emailed link and a redesign. Give it:
+The old Claude fix step (`--allowedTools "Edit,Bash" --max-turns 10`, pushed to `main`) was too small
+for real breakage, and is gone from `run.sh`. The Budget Thuis fix took probing the login server, an emailed link and a redesign. Give it:
 
 - Read/Edit/Write/Bash/WebFetch, around 40 turns.
 - A prompt with the failing output (local only), `AGENTS.md`, the mail helper's usage, and an
@@ -153,21 +154,30 @@ breakage. The Budget Thuis fix took probing the login server, an emailed link an
 
 Run the whole job as a dedicated user on the box that has only this repo and these secrets.
 
-### systemd (`.ci/systemd/`)
+### The box today (built 2026-10-27)
 
-- **`skills-weekly.service`:** `Type=oneshot`, `EnvironmentFile=%h/.config/skills-ci/env`
-  (`INFISICAL_UNIVERSAL_AUTH_CLIENT_ID`, `_SECRET`, `CLAUDE_CODE_OAUTH_TOKEN`, mode 600),
-  `ExecStart=%h/skills/.ci/run.sh`, `TimeoutStartSec=2h`.
-- **`skills-weekly.timer`:** `OnCalendar=Mon *-*-* 03:00:00 Europe/Amsterdam`, `Persistent=true`, so
-  a run missed while the box was off happens at the next boot.
-- Install as user units, with `loginctl enable-linger <user>` so they run without a login session.
+- **Scheduler:** Hermes Agent's gateway, already running on the box for the owner (user service,
+  linger on), has a cron job `skills-ci`: `0 3 * * 1`, `--no-agent`, so no model is involved and the
+  script's stdout is delivered as is, to WhatsApp. `catch_up_missed` runs a slot missed while the box
+  was off. A Monday without a message means the box didn't run.
+- **Bridge:** Hermes runs as `ubuntu`, the job as `skills-ci`. `.ci/hermes-job.sh` (installed as
+  `~/.hermes/scripts/skills-ci.sh`) sshes to `skills-ci@localhost` with a key that `skills-ci`'s
+  `authorized_keys` pins to `run.sh` (`restrict,command=…`), so Hermes can start a run and nothing else.
+- **`run.sh`:** takes a `flock`, pulls `main` and restarts from the pulled copy, loads
+  `~/.config/skills-ci/env` and runs `pull-secrets.sh`, then tests each skill with a 20-minute cap.
+  It prints one line per skill: passed, skipped with the tests' skip reasons, and the names of failing
+  tests. Full output stays in `~/.local/state/skills-ci/<run>/` (last 10 runs, mode 700).
+- **`~/.config/skills-ci/env`:** the machine identity `skills-ci` (client secret "nuc box") and
+  `CI_SKIP=ovpay`, until relogin exists.
+- **Not yet:** AH has no session on the box (its live tests skip; sign in once there with
+  `ah.mjs login`), no Claude token, no fixes, PRs or issues.
 
 ## Credentials
 
 | Credential | Where | Lifetime | Renewal |
 |---|---|---|---|
 | Claude (`claude setup-token`) | box env file | long-lived (check what it prints) | owner, about yearly |
-| Infisical machine identity (Universal Auth) | box env file | no expiry (client secret TTL 0) | none |
+| Infisical machine identity `skills-ci` (Universal Auth, client secret "nuc box") | box env file | no expiry (client secret TTL 0) | none |
 | GitHub fine-grained PAT: contents, pull requests, issues (read/write), this repo only | Infisical `/` `GITHUB_TOKEN` (`pull-secrets.sh` already sets up git; export `GH_TOKEN` for `gh`) | up to 1 year | owner |
 | Gmail OAuth client and refresh token | Infisical `/gmail` | until revoked (app must be "In production") | none |
 | Budget Thuis session | Infisical `/budgetthuis` | 90 days | `renew.mjs`, automatic |
@@ -196,14 +206,13 @@ Run the whole job as a dedicated user on the box that has only this repo and the
 
 **Owner, on the box:**
 
-7. Install Node 22+, git, `gh`, `python3` with `pypdf`. Clone the repo, run `.ci/bootstrap.sh`, run
-   `claude setup-token`, write `~/.config/skills-ci/env`, copy the AH invoice PDFs and their
-   expected CSVs to `.ci/ah/.fixtures/`.
+7. ~~Install Node 22+, git, `gh`, `python3` with `pypdf`. Clone the repo, run `.ci/bootstrap.sh`,
+   write `~/.config/skills-ci/env`, copy the AH invoice PDFs and their expected CSVs to
+   `.ci/ah/.fixtures/`.~~ Done. Left: `claude setup-token` (for step 6), and an AH sign-in.
 
 **Build:**
 
-8. `.ci/systemd/` units and `bootstrap.sh` installing them. Done when
-   `systemctl --user start skills-weekly` runs end to end and the timer shows next Monday.
+8. ~~Schedule it.~~ Done with Hermes cron instead of systemd units (see "The box today").
 9. Delete the GitHub secrets `INFISICAL_UNIVERSAL_AUTH_CLIENT_ID` and `_SECRET`: nothing has used
    them since `integration.yml` went.
 
