@@ -163,6 +163,9 @@ Run the whole job as a dedicated user on the box that has only this repo and the
 - **Bridge:** Hermes runs as `ubuntu`, the job as `skills-ci`. `.ci/hermes-job.sh` (installed as
   `~/.hermes/scripts/skills-ci.sh`) sshes to `skills-ci@localhost` with a key that `skills-ci`'s
   `authorized_keys` pins to `run.sh` (`restrict,command=…`), so Hermes can start a run and nothing else.
+- **School digest:** a second job, `school-digest` (`55 18 * * 0-4`), runs `.ci/magister/digest.mjs`
+  the same way, with its own pinned key: tomorrow's lesson hours, LO or fitness (sportswear), and
+  grades and absences it hasn't reported before (`~/.local/state/magister-digest.json`).
 - **`run.sh`:** takes a `flock`, pulls `main` and restarts from the pulled copy, loads
   `~/.config/skills-ci/env` and runs `pull-secrets.sh`, then tests each skill with a 20-minute cap.
   It prints one line per skill: passed, skipped with the tests' skip reasons, and the names of failing

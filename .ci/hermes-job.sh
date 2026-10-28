@@ -5,9 +5,12 @@
 # this script in ~/.hermes/scripts/ and its own key, named after the copy:
 #
 #   skills-ci.sh       ~/.ssh/skills-ci_ed25519       command="bash /home/skills-ci/skills/.ci/run.sh"
+#   school-digest.sh   ~/.ssh/school-digest_ed25519   command="node /home/skills-ci/skills/.ci/magister/digest.mjs"
 #
 # authorized_keys line: restrict,command="..." ssh-ed25519 AAAA... hermes cron -> <job>
 # Install, as the Hermes user:
 #   cp .ci/hermes-job.sh ~/.hermes/scripts/skills-ci.sh
 #   hermes cron create '0 3 * * 1' --name skills-ci --script skills-ci.sh --no-agent --deliver whatsapp
+#   cp .ci/hermes-job.sh ~/.hermes/scripts/school-digest.sh
+#   hermes cron create '55 18 * * 0-4' --name school-digest --script school-digest.sh --no-agent --deliver whatsapp
 exec ssh -i ~/.ssh/"$(basename "$0" .sh)"_ed25519 -o IdentitiesOnly=yes -o BatchMode=yes skills-ci@localhost
