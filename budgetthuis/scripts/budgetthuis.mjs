@@ -513,7 +513,8 @@ export async function usage(session, from, to, resolution = 'day', contractId) {
       estimated: [r.usageElectricityConsumption, r.usageGasConsumption, r.totalCosts].some(x => x?.isInterpolated),
     });
   }
-  return out.sort((a, b) => a.from.localeCompare(b.from));
+  // By instant: on the DST-end day the string order puts 02:00+01:00 before 02:00+02:00.
+  return out.sort((a, b) => Date.parse(a.from) - Date.parse(b.from));
 }
 
 // ---------------------------------------------------------------------------
