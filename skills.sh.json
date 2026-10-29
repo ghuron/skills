@@ -24,8 +24,8 @@
     },
     {
       "title": "Money",
-      "description": "Bank exports, grocery orders, invoices and receipts.",
-      "skills": ["abn-amro", "ah"]
+      "description": "Bank exports, credit cards, grocery orders, invoices and receipts.",
+      "skills": ["icscards", "abn-amro", "ah"]
     },
     {
       "title": "Home",

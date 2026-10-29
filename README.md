@@ -11,6 +11,7 @@ npm dependencies, plus a `SKILL.md` that tells the agent how to use it.
 | [budgetthuis](budgetthuis/SKILL.md) | Budget Thuis energy: tariffs, contract, monthly instalment, invoices (PDF), usage with costs |
 | [dunea](dunea/SKILL.md) | Dunea drinking water: advance payment (voorschot) and its range, invoices and yearly bills (PDF), meter readings and water use per year |
 | [vodafone](vodafone/SKILL.md) | Vodafone mobile: numbers, bundles left, usage and costs, invoices (PDF) with per-number breakdown and call records, PUK; switches mobile internet off and on per number |
+| [icscards](icscards/SKILL.md) | ICS credit card (also ABN AMRO, ANWB, Bijenkorf): balance, limit and spending left, transactions per statement period, statement PDFs |
 | [abn-amro](abn-amro/SKILL.md) | ABN AMRO transaction export (.TAB) to CSV, offline |
 | [ah](ah/SKILL.md) | Albert Heijn: online orders, invoices (PDF), in-store receipts with Bonus discounts; invoices to CSV |
 | [epson](epson/SKILL.md) | Ink levels of an Epson Expression XP-series network printer |
@@ -31,8 +32,8 @@ Updating with `npx skills` replaces the folder, `.env` included.
 
 ## Disclaimer
 
-Unofficial tools, not affiliated with or endorsed by Magister, OVpay, HTM, Budget Thuis, Dunea, Vodafone, ABN AMRO, Albert
-Heijn, Epson or Ecovacs. They use the same undocumented APIs as the services' own websites and apps, which can change without
+Unofficial tools, not affiliated with or endorsed by Magister, OVpay, HTM, Budget Thuis, Dunea, Vodafone, ICS, ABN AMRO,
+Albert Heijn, Epson or Ecovacs. They use the same undocumented APIs as the services' own websites and apps, which can change without
 notice.
 
 ## License

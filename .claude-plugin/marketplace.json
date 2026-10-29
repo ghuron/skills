@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
   "name": "ghuron-skills",
-  "description": "Agent skills for Dutch everyday services: Magister (school), OVpay and HTM (public transport), Budget Thuis (energy), Dunea (water), Vodafone (mobile), ABN AMRO (bank exports), Albert Heijn (groceries), Epson printer ink and Ecovacs robot vacuums.",
+  "description": "Agent skills for Dutch everyday services: Magister (school), OVpay and HTM (public transport), Budget Thuis (energy), Dunea (water), Vodafone (mobile), ICS (credit cards), ABN AMRO (bank exports), Albert Heijn (groceries), Epson printer ink and Ecovacs robot vacuums.",
   "owner": {
     "name": "ghuron",
     "url": "https://github.com/ghuron"
@@ -71,6 +71,17 @@
       "keywords": ["vodafone", "vodafoneziggo", "mobile", "phone", "data", "bundel", "invoice", "netherlands"],
       "license": "MIT-0",
       "homepage": "https://github.com/ghuron/skills/tree/main/vodafone",
+      "repository": "https://github.com/ghuron/skills"
+    },
+    {
+      "name": "icscards",
+      "source": "./",
+      "skills": ["./icscards"],
+      "description": "ICS credit cards (icscards.nl, also ABN AMRO, ANWB and Bijenkorf cards): balance, credit limit and spending left, pending payments, the last statement and its direct debit, transactions per statement period, and monthly statement PDFs.",
+      "category": "finance",
+      "keywords": ["ics", "icscards", "credit-card", "creditcard", "mastercard", "visa", "transactions", "rekeningoverzicht", "netherlands"],
+      "license": "MIT-0",
+      "homepage": "https://github.com/ghuron/skills/tree/main/icscards",
       "repository": "https://github.com/ghuron/skills"
     },
     {
