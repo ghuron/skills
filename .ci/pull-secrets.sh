@@ -57,6 +57,7 @@ write_env /epson           epson/.env
 write_env /ecovacs         ecovacs/.env
 write_env /ovpay           ovpay/.env
 write_env /budgetthuis     budgetthuis/.env
+write_env /dunea           dunea/.env
 write_env /vodafone        vodafone/.env
 
 # ---------------------------------------------------------------------------

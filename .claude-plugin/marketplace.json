@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
   "name": "ghuron-skills",
-  "description": "Agent skills for Dutch everyday services: Magister (school), OVpay and HTM (public transport), Budget Thuis (energy), Vodafone (mobile), ABN AMRO (bank exports), Albert Heijn (groceries), Epson printer ink and Ecovacs robot vacuums.",
+  "description": "Agent skills for Dutch everyday services: Magister (school), OVpay and HTM (public transport), Budget Thuis (energy), Dunea (water), Vodafone (mobile), ABN AMRO (bank exports), Albert Heijn (groceries), Epson printer ink and Ecovacs robot vacuums.",
   "owner": {
     "name": "ghuron",
     "url": "https://github.com/ghuron"
@@ -49,6 +49,17 @@
       "keywords": ["budgetthuis", "budget-energie", "energy", "electricity", "gas", "termijnbedrag", "netherlands"],
       "license": "MIT-0",
       "homepage": "https://github.com/ghuron/skills/tree/main/budgetthuis",
+      "repository": "https://github.com/ghuron/skills"
+    },
+    {
+      "name": "dunea",
+      "source": "./",
+      "skills": ["./dunea"],
+      "description": "Dunea drinking water: customer and payment details, the advance payment (voorschot) and its allowed range, advance invoices and yearly bills with PDF download, and meter readings with water use per year.",
+      "category": "home",
+      "keywords": ["dunea", "water", "drinkwater", "voorschot", "periodeafrekening", "meterstand", "den-haag", "netherlands"],
+      "license": "MIT-0",
+      "homepage": "https://github.com/ghuron/skills/tree/main/dunea",
       "repository": "https://github.com/ghuron/skills"
     },
     {

@@ -13,9 +13,9 @@
       "skills": ["ovpay", "htm"]
     },
     {
-      "title": "Energy",
-      "description": "Tariffs, bills and usage from Dutch energy suppliers.",
-      "skills": ["budgetthuis"]
+      "title": "Energy and water",
+      "description": "Tariffs, bills and usage from Dutch energy suppliers and water companies.",
+      "skills": ["budgetthuis", "dunea"]
     },
     {
       "title": "Mobile",
