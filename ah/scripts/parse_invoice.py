@@ -18,6 +18,7 @@ import pypdf
 AMT = r'-?[\d.]*\d,\d\d'
 LINE = re.compile(rf'^(?P<indent>\s*)(?P<name>\S.*?)\s+(?:(?P<qty>\d+)\s+)?(?P<vat>\d+%|Geen)\s+(?P<ex>{AMT})\s+(?P<btw>{AMT})\s+(?P<inc>{AMT})$')
 SUP = re.compile(rf'^\s+Inclusief SUP heffing ({AMT})$')
+PACK = re.compile(r'\s*(?:\d+-?(?:pack|pk|pck)|\d+ flessen)$')  # multipack product title, above its line
 TOTAL = re.compile(rf'^\s*Totaal\s+({AMT})\s+({AMT})\s+({AMT})$')
 GROUPS = {'Overig', 'Verrekeningen'}
 SECTIONS = {'Statiegeld', 'Verpakkingsmateriaal', 'Statiegeld retour', 'Correcties artikelen vorige bestelling(en)'}
@@ -39,7 +40,7 @@ def parse(path):
     start = next(i for i, l in enumerate(lines) if l.strip().startswith('Omschrijving')) + 1
     qty_col = lines[start - 1].index('Aantal')  # quantities are right-aligned under this header
     rows, total = [], None
-    pack = None        # Bonus multipack deal name, printed on the line above its product
+    pack = None        # multipack title, printed on the line above its product (marked BONUS if on offer)
     extras = False     # past the groceries, in the Overig / Verrekeningen part
     section = None     # heading whose lines are indented under it (Statiegeld, ...)
     wrappable = False  # previous line was a standalone extras line whose name may wrap
@@ -58,8 +59,8 @@ def parse(path):
                 name, qty = re.sub(r'\s+', ' ', s[m.start('name'):m.end('qty')]), ''
             if re.search(r'\s+BONUS$', name):
                 name, bonus = re.sub(r'\s+BONUS$', '', name), 'Yes'
-            if pack is not None and not bonus:
-                sys.exit(f'{path}: multipack line {pack!r} not followed by a BONUS item: {s!r}')
+            if pack is not None and not bonus and PACK.sub('', pack) != name:
+                sys.exit(f'{path}: multipack line {pack!r} not followed by its product: {s!r}')
             pack = None
             if m['indent']:
                 if not section:
@@ -83,7 +84,7 @@ def parse(path):
             section = t
         elif was_wrappable:
             rows[-1]['Item'] += ' ' + t
-        elif not extras and re.search(r'\d+-?(pack|pk|pck)$|\d+ flessen$', t):
+        elif not extras and PACK.search(t):
             pack = t
         else:
             sys.exit(f'{path}: unrecognised line: {s!r}')
