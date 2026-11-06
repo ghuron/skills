@@ -73,8 +73,12 @@ test('tariffs: contract terms and per-unit prices', { skip }, () => {
   assert.equal(typeof t.canRenew, 'boolean');
 });
 
-test('termijnbedrag: current amount within the allowed range', { skip }, () => {
-  const t = runCLI(['termijnbedrag']);
+test('termijnbedrag: current amount within the allowed range', { skip }, ctx => {
+  // The portal can have the calculator off for a while; that's account state, not a portal change.
+  const r = spawnSync('node', [CLI, 'termijnbedrag'], { encoding: 'utf8', env: ENV, timeout: 60_000 });
+  if (r.status !== 0 && /Termijnbedrag Manager unavailable/.test(r.stderr)) return ctx.skip('Termijnbedrag Manager unavailable');
+  assert.equal(r.status, 0, `CLI exited ${r.status}: ${r.stderr}`);
+  const t = JSON.parse(r.stdout);
   for (const k of ['current', 'advice', 'minimum', 'maximum']) assert.equal(typeof t[k], 'number', k);
   assert.ok(t.minimum <= t.current && t.current <= t.maximum, JSON.stringify(t));
 });

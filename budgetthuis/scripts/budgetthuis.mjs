@@ -12,7 +12,7 @@
  *   account                          customer number, name, address, masked contact/bank details
  *   contracts                        contracts: id, status, start, duration, supply address
  *   tariffs                          current contract terms and tariffs (per kWh / m³ / month)
- *   termijnbedrag                    monthly instalment, advice and allowed range
+ *   termijnbedrag [contractId]       monthly instalment, advice and allowed range
  *   invoices                         invoices with amount, due date and open balance
  *   invoice <invoiceId> [file.pdf]   download an invoice PDF
  *   usage <from> <to> [hour|day|week|month] [contractId]
@@ -268,7 +268,8 @@ export async function api(session, path, base = API) {
 // account / contracts / tariffs / termijnbedrag
 //
 // Untested: accounts with several addresses. The portal has kies-adres (choose
-// address) routes for that; tariffs and termijnbedrag read whatever it shows first.
+// address) routes for that; tariffs reads whatever it shows first. termijnbedrag and
+// usage take a contractId when there is more than one active contract.
 // ---------------------------------------------------------------------------
 
 /** label -> value pairs from `<b>label</b> ... <div class="detail-value">value</div>` blocks. */
@@ -310,6 +311,13 @@ export async function contracts(session) {
         .filter(Boolean).join(', '),
     };
   });
+}
+
+/** The contractId of the account's only active contract. */
+async function activeContractId(session) {
+  const active = (await contracts(session)).filter(c => c.status === 'Active');
+  if (active.length !== 1) throw new Error(`Pass a contractId; ${active.length} active contracts (run \`contracts\`)`);
+  return active[0].contractId;
 }
 
 const SECTIONS = {
@@ -377,17 +385,28 @@ export async function tariffs(session) {
 }
 
 /**
- * /energie/termijnbedrag redirects to /energie/wijzigen-termijnbedrag/{contractId}. The slider's
- * data-hard-minimum/maximum are the allowed range. The form's amount input is pre-filled with the
- * advice, so the current amount comes from the "Je termijnbedrag" heading. Changing it would be a
- * plain form POST (advance_amount[amount] + advance_amount[_token]); the skill stays read-only.
+ * The Termijnbedrag Manager lives at /energie/wijzigen-termijnbedrag/{contractId}; /energie/termijnbedrag
+ * used to redirect there but can also show just a stub. The slider's data-hard-minimum/maximum are
+ * the allowed range. The form's amount input is pre-filled with the advice, so the current amount
+ * comes from the "Je termijnbedrag" heading. Changing it would be a plain form POST
+ * (advance_amount[amount] + advance_amount[_token]); the skill stays read-only.
+ *
+ * When the instalment backend has no calculation (the app API's monthlyAmount then answers 404), the
+ * page shows a loadErrorMonthlyAmountManager box instead of the form. Its text blames a recent start
+ * or move, but the box is generic: it also appears months into a contract, and for a contractId that
+ * isn't the account's.
  */
-export async function termijnbedrag(session) {
-  const html = await (await portal(session, '/energie/termijnbedrag')).text();
+export async function termijnbedrag(session, contractId) {
+  contractId ??= await activeContractId(session);
+  const path = `/energie/wijzigen-termijnbedrag/${contractId}`;
+  const html = await (await portal(session, path)).text();
+  const off = !/data-hard-minimum/.test(html)
+    && html.match(/id="loadErrorMonthlyAmountManager"[\s\S]*?<h2[^>]*>([\s\S]*?)<\/h2>[\s\S]*?<p>([\s\S]*?)<\/p>/);
+  if (off) throw new Error(`Termijnbedrag Manager unavailable, the portal says: ${text(off[1])}. ${text(off[2])}`);
   const t = text(html);
   const num = (re, what) => {
     const m = t.match(re);
-    if (!m) throw new Error(`Portal changed: could not find ${what} on /energie/termijnbedrag`);
+    if (!m) throw new Error(`Portal changed: could not find ${what} on /energie/wijzigen-termijnbedrag`);
     return m[1];
   };
   const opt = re => t.match(re)?.[1] ?? null;
@@ -477,11 +496,7 @@ const nextDay = date => new Date(Date.parse(`${date}T00:00:00Z`) + 86_400_000).t
 export async function usage(session, from, to, resolution = 'day', contractId) {
   if (!/^\d{4}-\d\d-\d\d$/.test(from) || !/^\d{4}-\d\d-\d\d$/.test(to)) throw new Error('Dates must be YYYY-MM-DD');
   if (!RESOLUTIONS[resolution]) throw new Error(`Resolution must be one of ${Object.keys(RESOLUTIONS).join(', ')}`);
-  if (!contractId) {
-    const active = (await contracts(session)).filter(c => c.status === 'Active');
-    if (active.length !== 1) throw new Error(`Pass a contractId; ${active.length} active contracts (run \`contracts\`)`);
-    contractId = active[0].contractId;
-  }
+  contractId ??= await activeContractId(session);
   const end = nextDay(to);
   const query = new URLSearchParams({ PeriodDuration: RESOLUTIONS[resolution], PeriodFrom: from, PeriodTo: end });
   const res = await api(session, `contract/${contractId}/usagecosts/details?${query}`, APP_API);
@@ -527,7 +542,7 @@ const USAGE = `Usage: node scripts/budgetthuis.mjs <command> [args]
   account                          customer number, name, address, masked contact/bank details
   contracts                        contracts: id, status, start, duration, supply address
   tariffs                          current contract terms and tariffs
-  termijnbedrag                    monthly instalment, advice and allowed range
+  termijnbedrag [contractId]       monthly instalment, advice and allowed range
   invoices                         invoices with amount, due date and open balance
   invoice <invoiceId> [file.pdf]   download an invoice PDF
   usage <from> <to> [hour|day|week|month] [contractId]
@@ -544,7 +559,7 @@ async function main([cmd, ...args]) {
     account: [0, s => account(s)],
     contracts: [0, s => contracts(s)],
     tariffs: [0, s => tariffs(s)],
-    termijnbedrag: [0, s => termijnbedrag(s)],
+    termijnbedrag: [0, s => termijnbedrag(s, args[0])],
     invoices: [0, s => invoices(s)],
     invoice: [1, s => downloadInvoice(s, args[0], args[1])],
     usage: [2, s => usage(s, args[0], args[1], args[2], args[3])],

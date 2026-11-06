@@ -12,7 +12,7 @@ node scripts/budgetthuis.mjs login <link>                     # sign in with the
 node scripts/budgetthuis.mjs account                          # customer number, name, address (contact and bank details masked)
 node scripts/budgetthuis.mjs contracts                        # contractId, status, start date, duration, address
 node scripts/budgetthuis.mjs tariffs                          # contract terms, tariffs, renewal offer, exit fee
-node scripts/budgetthuis.mjs termijnbedrag                    # monthly instalment, advice, allowed range
+node scripts/budgetthuis.mjs termijnbedrag [contractId]       # monthly instalment, advice, allowed range
 node scripts/budgetthuis.mjs invoices                         # invoices, newest first, with open balance
 node scripts/budgetthuis.mjs invoice <invoiceId> [file.pdf]   # download an invoice PDF (default <invoiceId>.pdf)
 node scripts/budgetthuis.mjs usage <from> <to> [hour|day|week|month] [contractId]
@@ -37,7 +37,9 @@ portal. Grid operator costs and the yearly energy tax refund are not included.
 
 `termijnbedrag`: `minimum`/`maximum` bound what the instalment can be set to, `basedOnKwh`/`basedOnGasM3`
 is the yearly usage behind `advice`, and `remainingTerms` is the instalments left before the yearly
-bill (jaarnota).
+bill (jaarnota). When Budget Thuis's instalment calculator has no answer, the command fails with
+"Termijnbedrag Manager unavailable" and the portal's text. That text is generic: it blames a recent start
+or move even months into a contract. The instalments charged so far are still in `invoices`.
 
 `invoices`: `balance` is what's still unpaid, `openBalance` the sum. Pass `invoiceId`, not
 `invoiceNumber`, to `invoice`.
