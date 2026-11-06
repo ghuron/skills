@@ -1,7 +1,8 @@
-# Agent skills for Dutch everyday services
+# Agent skills for everyday services
 
-[Agent Skills](https://agentskills.io) for a household in the Netherlands. Each is a small Node.js 22+ CLI without
-npm dependencies, plus a `SKILL.md` that tells the agent how to use it.
+[Agent Skills](https://agentskills.io) for the services a household in the Netherlands runs on (school, public transport,
+energy, water, mobile, banking and groceries), for devices at home (a printer, a robot vacuum) and for work (Brex corporate
+cards). Each is a small Node.js 22+ CLI without npm dependencies, plus a `SKILL.md` that tells the agent how to use it.
 
 | Skill | What it does |
 |---|---|
