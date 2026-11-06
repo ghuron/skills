@@ -14,6 +14,7 @@ npm dependencies, plus a `SKILL.md` that tells the agent how to use it.
 | [icscards](icscards/SKILL.md) | ICS credit card (also ABN AMRO, ANWB, Bijenkorf): balance, limit and spending left, transactions per statement period, statement PDFs |
 | [abn-amro](abn-amro/SKILL.md) | ABN AMRO transaction export (.TAB) to CSV, offline |
 | [ah](ah/SKILL.md) | Albert Heijn: online orders, invoices (PDF), in-store receipts with Bonus discounts; invoices to CSV |
+| [brex](brex/SKILL.md) | Brex corporate cards: expenses with cardholder, merchant, category, amounts as purchased and billed, memo and receipts, by purchase, posting or change date; receipt downloads |
 | [epson](epson/SKILL.md) | Ink levels of an Epson Expression XP-series network printer |
 | [ecovacs](ecovacs/SKILL.md) | Ecovacs DEEBOT robot vacuum: status, consumables, cleaning history, rooms; starts, pauses, stops and docks it |
 
@@ -33,8 +34,8 @@ Updating with `npx skills` replaces the folder, `.env` included.
 ## Disclaimer
 
 Unofficial tools, not affiliated with or endorsed by Magister, OVpay, HTM, Budget Thuis, Dunea, Vodafone, ICS, ABN AMRO,
-Albert Heijn, Epson or Ecovacs. They use the same undocumented APIs as the services' own websites and apps, which can change without
-notice.
+Albert Heijn, Brex, Epson or Ecovacs. Most use the same undocumented APIs as the services' own websites and apps, which can change
+without notice; brex uses Brex's public API.
 
 ## License
 

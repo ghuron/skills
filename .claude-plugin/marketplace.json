@@ -107,6 +107,17 @@
       "repository": "https://github.com/ghuron/skills"
     },
     {
+      "name": "brex",
+      "source": "./",
+      "skills": ["./brex"],
+      "description": "Brex corporate cards: card expenses with cardholder, merchant, MCC and category, amounts as purchased and as billed, memo, receipts, custom fields and review and payment status, by purchase, posting or change date, and receipt downloads.",
+      "category": "finance",
+      "keywords": ["brex", "corporate-card", "credit-card", "expenses", "receipts", "bookkeeping", "reconciliation"],
+      "license": "MIT-0",
+      "homepage": "https://github.com/ghuron/skills/tree/main/brex",
+      "repository": "https://github.com/ghuron/skills"
+    },
+    {
       "name": "epson",
       "source": "./",
       "skills": ["./epson"],

@@ -59,6 +59,7 @@ write_env /ovpay           ovpay/.env
 write_env /budgetthuis     budgetthuis/.env
 write_env /dunea           dunea/.env
 write_env /vodafone        vodafone/.env
+write_env /brex            brex/.env
 
 # ---------------------------------------------------------------------------
 # System secrets
