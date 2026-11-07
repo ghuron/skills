@@ -13,15 +13,13 @@
 import { readFileSync, writeFileSync, mkdirSync, renameSync } from 'fs';
 import { homedir } from 'os';
 import { dirname, join } from 'path';
-import { apiGet } from '../../magister/scripts/magister.mjs';
+import { apiGet, CANCELLED } from '../../magister/scripts/magister.mjs';
 
 const STATE = process.env.MAGISTER_DIGEST_STATE || join(homedir(), '.local', 'state', 'magister-digest.json');
 const TZ    = 'Europe/Amsterdam';
 
-// Afspraak.Type of a timetabled lesson, and the Afspraak.Status values of a cancelled one (by hand, by
-// the timetable)
+// Afspraak.Type of a timetabled lesson
 const LESSON    = 13;
-const CANCELLED = new Set([4, 5]);
 // Lessons that need sportswear, matched on the subject code or name
 const SPORT     = /^(lo|fit)\b|lichamelijke opvoeding|fitness|gym|sport/i;
 

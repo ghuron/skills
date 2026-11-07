@@ -18,8 +18,9 @@ node scripts/magister.mjs report-sick <id> <date> [note] # report sick (ziekmeld
 
 `messages` and `message` read the inbox of whoever is logged in, and never mark a message as read.
 
-A lesson's `homework` is `null` or `{type, text, done}`. `type` is `homework`, `test`, `exam`,
-`quiz`, `oral`, `info`, `note` or `null`; `done` means the student ticked it off.
+`schedule` leaves out cancelled lessons. A lesson's `homework` is `null` or `{type, text, done}`.
+`type` is `homework`, `test`, `exam`, `quiz`, `oral`, `info`, `note` or `null`; `done` means the
+student ticked it off.
 
 # Reporting sick
 

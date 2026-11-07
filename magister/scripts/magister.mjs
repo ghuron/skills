@@ -155,6 +155,9 @@ const htmlToText = html => html
 // informatie, aantekening
 const INFO_TYPES = { 1: 'homework', 2: 'test', 3: 'exam', 4: 'quiz', 5: 'oral', 6: 'info', 7: 'note' };
 
+// Afspraak.Status of a cancelled lesson: cancelled by hand, or by the timetable
+export const CANCELLED = new Set([4, 5]);
+
 const USAGE = 'Commands: students | schedule <id> <from> <to> | grades <id> [top] | infractions <id> <from> <to> | messages [top] | message <id> | report-sick <id> <date> [note]';
 
 const commands = {
@@ -181,7 +184,7 @@ const commands = {
   async schedule(id, from, to) {
     const raw = await apiGet(`/api/personen/${id}/afspraken?van=${from}&tot=${to}`);
     return raw.Items
-      .filter(i => i.Status !== 5)
+      .filter(i => !CANCELLED.has(i.Status))
       .map(i => ({
         start:   toLocal(i.Start),
         end:     toLocal(i.Einde),
