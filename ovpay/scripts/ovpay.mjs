@@ -41,6 +41,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync } from 'f
 import { homedir } from 'os';
 import { join, dirname } from 'path';
 import { createInterface } from 'readline';
+import { randomBytes, createHash } from 'crypto';
 
 // Credentials may also sit in a .env in the skill folder; variables already set win.
 const ENV_FILE = new URL('../.env', import.meta.url);
@@ -96,7 +97,6 @@ export async function refresh(tok = loadTokens()) {
   return nw;
 }
 
-let _access = null;
 export async function accessToken(force = false) {
   if (!force) {
     const tok = loadTokens();
@@ -110,16 +110,24 @@ export async function accessToken(force = false) {
 // --------------------------------------------------------------------------- //
 // HTTP
 // --------------------------------------------------------------------------- //
-export async function api(path, { method = 'GET', secureTat = null, body = null, json = null } = {}) {
+const secureTats = new Map(); // xtat -> SecureTat token (a promise), see secureTatToken
+
+/** `xtat` marks a call about that card: a 403 then gets a SecureTat token for it and one retry. */
+export async function api(path, { method = 'GET', xtat = null, json = null } = {}) {
   const url = path.startsWith('http') ? path : API + '/' + path.replace(/^\//, '');
+  const body = json == null ? null : JSON.stringify(json);
   const call = async (force) => {
     const headers = { Authorization: 'Bearer ' + (await accessToken(force)), Accept: 'application/json' };
-    if (secureTat) headers.SecureTatAccessToken = 'Bearer ' + secureTat;
-    if (json != null) { headers['Content-Type'] = 'application/json'; body = JSON.stringify(json); }
+    if (body) headers['Content-Type'] = 'application/json';
+    if (secureTats.has(xtat)) headers.SecureTatAccessToken = 'Bearer ' + await secureTats.get(xtat);
     return fetch(url, { method, headers, body });
   };
   let r = await call(false);
   if (r.status === 401) r = await call(true);
+  if (r.status === 403 && xtat && !secureTats.has(xtat)) {
+    secureTats.set(xtat, secureTatToken(xtat));
+    r = await call(false);
+  }
   return r;
 }
 
@@ -135,8 +143,9 @@ async function apiJson(path, opts) {
 // Trips of a card its owner secured answer 403 "A valid SecureTat access token
 // is required". For an already secured card the token is minted on demand with
 // the main bearer alone, no email code, and sent as `SecureTatAccessToken:
-// Bearer <token>` next to Authorization. Unsecured cards need nothing extra;
-// securing one (`secure`) is the only flow that needs an emailed code.
+// Bearer <token>` next to Authorization; api() does that for calls given an
+// xtat. Unsecured cards need nothing extra; securing one (`secure`) is the only
+// flow that needs an emailed code.
 // --------------------------------------------------------------------------- //
 async function secureTatToken(xtat) {
   const r = await api('/api/v1/SecureTat/token/refresh-token', { method: 'POST', json: { xtat } });
@@ -152,12 +161,14 @@ async function secureTatToken(xtat) {
 // --------------------------------------------------------------------------- //
 export async function customer() { return apiJson('/api/v1/Customers'); }
 
+const eur = cents => typeof cents === 'number' ? cents / 100 : null;
+
 export async function cards() {
   const list = await apiJson('/api/v1/TransitAccounts');
   return list.map(t => ({
     name: (t.personalization || {}).name || null,
     xtat: t.xtat, xbot: t.xbot, medium: t.mediumType, status: t.status,
-    balance: typeof t.balance === 'number' ? t.balance / 100 : null,
+    balance: eur(t.balance),
     cardNumber: t.cardNumber || null,
   }));
 }
@@ -170,7 +181,6 @@ async function resolve(card) {
 }
 
 const STATUS = { COMPLETE: 'complete', CKOMISSING: 'missingCheckOut', CORRECTED: 'corrected' };
-const eur = cents => typeof cents === 'number' ? cents / 100 : null;
 
 // Fares are eurocents. checkInTimestamp carries the Europe/Amsterdam offset, so
 // its first 10 characters are the local date that from/to filter on. `it` is a
@@ -195,35 +205,25 @@ function toTrip(it) {
 // recent[20..39], so step by 20 and drop the trips already seen.
 const TRIPS_PAGE = 20;
 
-/** A card's raw trip-history items, with the SecureTat token they needed (null if none). */
-async function tripItems(card) {
-  const xtat = await resolve(card);
-  let st = null;
-  const fetchPage = (offset) =>
-    api(`/api/v3/Trips/${xtat}?offset=${offset}&limit=50`, { secureTat: st });
-  let r = await fetchPage(0);
-  if (r.status === 403) { st = await secureTatToken(xtat); r = await fetchPage(0); }
+/** A card's raw trip-history items; stops paging once an item matches `found`. */
+async function tripItems(xtat, found = () => false) {
   const items = [], seen = new Set();
-  let offset = 0;
-  while (true) {
-    if (r.status !== 200) throw new Error(`trips -> ${r.status}: ${(await r.text()).slice(0, 200)}`);
-    const j = await r.json();
-    const batch = j.items || [];
-    const fresh = batch.filter(it => !seen.has(it.trip?.id));
+  for (let offset = 0; ; offset += TRIPS_PAGE) {
+    const j = await apiJson(`/api/v3/Trips/${xtat}?offset=${offset}&limit=50`, { xtat });
+    const fresh = (j.items || []).filter(it => !seen.has(it.trip?.id));
     fresh.forEach(it => seen.add(it.trip?.id));
     items.push(...fresh);
-    if (j.endOfListReached || fresh.length === 0) break;
-    offset += TRIPS_PAGE;
-    r = await fetchPage(offset);
+    if (j.endOfListReached || fresh.length === 0 || fresh.some(found)) return items;
   }
-  return { st, items };
 }
 
 export async function trips(card, from = null, to = null) {
-  let out = (await tripItems(card)).items.map(toTrip);
+  const items = await tripItems(await resolve(card));
+  // Newest first, by instant: on the DST-end night the local times repeat an hour.
+  items.sort((a, b) => Date.parse(b.trip.checkInTimestamp) - Date.parse(a.trip.checkInTimestamp));
+  let out = items.map(toTrip);
   if (from) out = out.filter(t => t.date >= from);
   if (to) out = out.filter(t => t.date <= to);
-  out.sort((a, b) => (a.date + a.departureTime < b.date + b.departureTime ? 1 : -1));
   return out;
 }
 
@@ -256,12 +256,12 @@ const stopName = s => (s.localizedNames || []).find(n => n.language === 'nl-NL')
   || s.localizedNames?.[0]?.text || s.privateCode;
 
 async function tripDetails(card, tripId) {
-  const { st, items } = await tripItems(card);
-  const it = items.find(i => String(i.trip?.id) === String(tripId));
+  const xtat = await resolve(card);
+  const isIt = i => String(i.trip?.id) === String(tripId);
+  const it = (await tripItems(xtat, isIt)).find(isIt);
   if (!it) throw new Error(`No trip ${tripId} for ${card}; \`trips\` lists the ids.`);
-  const r = await api(`/api/v3/Trips/${it.trip.xbot}/${it.trip.id}`, { secureTat: st });
-  if (r.status !== 200) throw new Error(`trip details -> ${r.status}: ${(await r.text()).slice(0, 200)}`);
-  return { st, trip: it.trip, details: await r.json() };
+  const details = await apiJson(`/api/v3/Trips/${it.trip.xbot}/${it.trip.id}`, { xtat });
+  return { xtat, trip: it.trip, details };
 }
 
 export async function correction(card, tripId) {
@@ -281,7 +281,7 @@ export async function correction(card, tripId) {
 
 /** Correct a missed check-out to `stop` (a name or code from `correction`). Uses up one correction. */
 export async function correct(card, tripId, stop) {
-  const { st, trip, details: d } = await tripDetails(card, tripId);
+  const { xtat, trip, details: d } = await tripDetails(card, tripId);
   const o = d.correctionOptions || {};
   if (o.correctableStatus !== 'Correctable') {
     throw new Error(`Trip ${tripId} can't be corrected: ${o.correctableStatus || 'no correction options'}`
@@ -298,9 +298,9 @@ export async function correct(card, tripId, stop) {
   }
   const code = hits[0].privateCode;
   const r = await api(`/api/v1/TripCorrection/${trip.xbot}/${trip.id}?stopPrivateCode=${encodeURIComponent(code)}`,
-    { method: 'PUT', secureTat: st });
+    { method: 'PUT', xtat });
   if (r.status >= 400) throw new Error(`correction -> ${r.status}: ${(await r.text()).slice(0, 200)}`);
-  const after = await api(`/api/v3/Trips/${trip.xbot}/${trip.id}`, { secureTat: st });
+  const after = await api(`/api/v3/Trips/${trip.xbot}/${trip.id}`, { xtat });
   return {
     corrected: true,
     stop: { code, name: stopName(hits[0]) },
@@ -369,7 +369,6 @@ export async function login({ email, password, codeCb } = {}) {
   codeCb ||= () => ask('6-digit email code: ');
 
   const b64 = b => Buffer.from(b).toString('base64url');
-  const { randomBytes, createHash } = await import('node:crypto');
   const verifier = b64(randomBytes(32));
   const challenge = b64(createHash('sha256').update(verifier).digest());
 

@@ -44,7 +44,7 @@ or move even months into a contract. The instalments charged so far are still in
 `invoices`: `balance` is what's still unpaid, `openBalance` the sum. Pass `invoiceId`, not
 `invoiceNumber`, to `invoice`.
 
-`usage`: smart-meter rows. `to` is exclusive, `kwhLow` is off-peak, `kwhReturn` is fed back to the
+`usage`: smart-meter rows. Each row's `to` is exclusive, `kwhLow` is off-peak, `kwhReturn` is fed back to the
 grid. Costs (EUR incl. VAT and energy tax) leave out the fixed monthly costs. `estimated: true` marks
 an interpolated value (typically gas for the last day or two) that may still change.
 

@@ -4,13 +4,7 @@
  * from environment variables: HTM_LOGIN, HTM_PASSWORD, and optionally
  * HTM_BIRTHDATE_<tokenId> (YYYY-MM-DD) for age-based products on that pass
  *
- * Usage: node scripts/htm.mjs <command> [args]
- *
- * Commands:
- *   passes                                       list passes (bank cards and OV-passen)
- *   products <tokenId>                           list products for a pass
- *   reizen <tokenId> <from> <to>                 trips for a pass, dates YYYY-MM-DD
- *   reorder <tokenId> <productId> [validFrom]     configure+cart a product, dates YYYY-MM-DD
+ * Usage: node scripts/htm.mjs <command> [args]   (commands: see USAGE below)
  */
 
 import { fileURLToPath } from 'url';
@@ -26,13 +20,6 @@ const PASSWORD = process.env.HTM_PASSWORD;
 const TENANT = 'htmnlb2c.onmicrosoft.com';
 const POLICY = 'B2C_1_ABT-SFA-SignUpSignIn-001';
 const UA = 'Mozilla/5.0';
-
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  if (!LOGIN || !PASSWORD) {
-    console.error('Set HTM_LOGIN, HTM_PASSWORD before running.');
-    process.exit(1);
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Login (Azure AD B2C custom policy, self-asserted sign-in)
@@ -140,12 +127,9 @@ export async function login(user = LOGIN, password = PASSWORD) {
 // doesn't accept the session cookie and which the frontend never calls; ignore them.
 // ---------------------------------------------------------------------------
 
-export async function apiGet(session, path, query = {}) {
+export function apiGet(session, path, query = {}) {
   const qs = new URLSearchParams(query).toString();
-  const url = `https://www.htm.nl${path}${qs ? `?${qs}` : ''}`;
-  const r = await fetch(url, { headers: { Cookie: session, Accept: 'application/json', 'User-Agent': UA } });
-  if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
-  return r.json();
+  return orderApiCall(session, 'GET', qs ? `${path}?${qs}` : path);
 }
 
 // ---------------------------------------------------------------------------
@@ -233,7 +217,8 @@ export async function products(session, tokenId) {
 }
 
 const stopName = loc => loc?.stopName?.items?.find(i => i.key === 'nl-NL')?.value ?? null;
-const amsterdamDate = iso => new Date(iso).toLocaleDateString('en-CA', { timeZone: 'Europe/Amsterdam' });
+const AMSTERDAM_DATE = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Amsterdam' });
+const amsterdamDate = iso => AMSTERDAM_DATE.format(new Date(iso));
 
 /** Raw trips (untransformed API shape) for a pass, filtered to local calendar dates. */
 async function fetchTrips(session, tokenId, from, to) {
@@ -301,7 +286,7 @@ export async function reizen(session, tokenId, from, to) {
 // (productId 6 = Regio Vrij) — only changes on HTM's fixed annual
 // pricing/network revision date. Bundling means evaluating several family
 // members' passes costs one trip-history fetch per pass and no catalog fetch
-// at all — and regio-advies no longer needs the order API key. htm.test.mjs
+// at all. htm.test.mjs
 // re-fetches live and fails loudly if the bundle has drifted; run
 // `node .ci/htm/refresh.mjs` to update it. Only the Den Haag/Delft/Zoetermeer
 // areas (DH7x/HL6x), about half of the priced ones, have a polygon in
@@ -310,17 +295,10 @@ export async function reizen(session, tokenId, from, to) {
 //
 // All that coverage computation ever needs is "is this stopId inside this
 // region", so the catalog stores precomputed stop *membership* rather than
-// coordinates or polygons. Several of HTM's named regions are explicitly
-// combinations of smaller ones (e.g. "DH75 | Den Haag Centrum /
-// Leidschendam / Voorburg / Leidschenveen / Zoetermeer" contains
-// "DH70 | Den Haag Centrum" and "HL60 | Zoetermeer", and "HL64"/"HL65" each
-// contain nearly all the other regions) — repeating their ~1250-stop membership list per region would
-// be ~8x larger than necessary, so each region is instead stored as the
-// other regions it fully contains (`includes`) plus only the stops not
-// already covered by one of those (`extraStopIds`). A trip is "covered" by a
-// region only if both its checkin and checkout stop are members — matching
-// how the area pass actually works (unlimited travel *within* the area, not
-// to/from it).
+// coordinates or polygons (see buildRegioCatalog for its shape). A trip is
+// "covered" by a region only if both its checkin and checkout stop are
+// members — matching how the area pass actually works (unlimited travel
+// *within* the area, not to/from it).
 // ---------------------------------------------------------------------------
 
 export const REGIO_VRIJ_PRODUCT_ID = 6;
@@ -344,6 +322,13 @@ function pointInPolygon([lng, lat], ring) {
  * responses: resolves each region's stop membership by point-in-polygon,
  * then factors out any region that's a strict subset of another into
  * `includes` so combined regions don't repeat near-identical stop lists.
+ * Several of HTM's named regions are combinations of smaller ones (e.g.
+ * "DH75 | Den Haag Centrum / Leidschendam / Voorburg / Leidschenveen /
+ * Zoetermeer" contains "DH70 | Den Haag Centrum" and "HL60 | Zoetermeer",
+ * and "HL64"/"HL65" each contain nearly all the others); listing every
+ * region's full membership would be ~3x larger. Each region is stored as the
+ * regions it fully contains (`includes`) plus only the stops not already
+ * covered by one of those (`extraStopIds`).
  * Since `includes` is computed against *every* other region (not just
  * direct/minimal ones), it's already the full transitive closure — so a
  * region's effective membership is just its own extraStopIds plus the
@@ -370,12 +355,11 @@ export function buildRegioCatalog(wipkip, regionPrices) {
 
   return {
     regions: bases.map(b => {
-      const includes = bases
-        .filter(a => a.id !== b.id && a.stopIds.size < b.stopIds.size && [...a.stopIds].every(s => b.stopIds.has(s)))
-        .map(a => a.id);
-      const covered = new Set(includes.flatMap(id => [...bases.find(a => a.id === id).stopIds]));
+      const included = bases
+        .filter(a => a.id !== b.id && a.stopIds.size < b.stopIds.size && [...a.stopIds].every(s => b.stopIds.has(s)));
+      const covered = new Set(included.flatMap(a => [...a.stopIds]));
       const extraStopIds = [...b.stopIds].filter(s => !covered.has(s)).sort();
-      return { id: b.id, name: b.name, prices: b.prices, includes, extraStopIds };
+      return { id: b.id, name: b.name, prices: b.prices, includes: included.map(a => a.id), extraStopIds };
     }),
   };
 }
@@ -559,45 +543,23 @@ export async function cancelOrderline(session, orderLineId) {
 // CLI (only when run directly)
 // ---------------------------------------------------------------------------
 
-const COMMANDS = 'Commands: passes | products <tokenId> | reizen <tokenId> <from> <to> | ' +
+const USAGE = 'Commands: passes | products <tokenId> | reizen <tokenId> <from> <to> | ' +
   'regio-advies <tokenId>[,<tokenId>...] <from> <to> [ageProfile] | reorder <tokenId> <productId> [validFrom]';
+
+const commands = {
+  passes: s => passes(s),
+  products: (s, tokenId) => products(s, tokenId),
+  reizen: (s, tokenId, from, to) => reizen(s, tokenId, from, to),
+  'regio-advies': (s, tokenIds, from, to, ageProfile) => regioAdvies(s, tokenIds.split(','), from, to, ageProfile),
+  reorder: (s, tokenId, productId, validFrom) =>
+    reorder(s, tokenId, productId, validFrom, process.env[`HTM_BIRTHDATE_${tokenId}`]),
+};
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const [cmd, ...rest] = process.argv.slice(2);
-
-  async function run() {
-    if (!['passes', 'products', 'reizen', 'regio-advies', 'reorder'].includes(cmd)) {
-      console.error(COMMANDS);
-      process.exit(1);
-    }
-    const session = await login();
-    switch (cmd) {
-      case 'passes':
-        console.log(JSON.stringify(await passes(session)));
-        break;
-      case 'products': {
-        const [tokenId] = rest;
-        console.log(JSON.stringify(await products(session, tokenId)));
-        break;
-      }
-      case 'reizen': {
-        const [tokenId, from, to] = rest;
-        console.log(JSON.stringify(await reizen(session, tokenId, from, to)));
-        break;
-      }
-      case 'regio-advies': {
-        const [tokenIds, from, to, ageProfile] = rest;
-        console.log(JSON.stringify(await regioAdvies(session, tokenIds.split(','), from, to, ageProfile)));
-        break;
-      }
-      case 'reorder': {
-        const [tokenId, productId, validFrom] = rest;
-        const birthdate = process.env[`HTM_BIRTHDATE_${tokenId}`];
-        console.log(JSON.stringify(await reorder(session, tokenId, productId, validFrom, birthdate)));
-        break;
-      }
-    }
-  }
-
-  run().catch(e => { console.error(e.message); process.exit(1); });
+  const fail = msg => { console.error(msg); process.exit(1); };
+  if (!LOGIN || !PASSWORD) fail('Set HTM_LOGIN, HTM_PASSWORD before running.');
+  if (!Object.hasOwn(commands, cmd)) fail(USAGE);
+  login().then(session => commands[cmd](session, ...rest))
+    .then(out => console.log(JSON.stringify(out)), e => fail(e.message));
 }

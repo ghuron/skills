@@ -129,6 +129,7 @@ export function parseTab(text) {
 
 const cell = v => /[",\r\n]/.test(v ?? '') ? `"${v.replace(/"/g, '""')}"` : (v ?? '');
 export const toCsvLine = (cols, row) => cols.map(c => cell(row[c])).join(',') + '\r\n';
+const HEADER = COLUMNS.map(cell).join(',') + '\r\n';
 
 /** RFC 4180 rows (arrays of strings). */
 export function parseCsv(text) {
@@ -153,7 +154,7 @@ const key = r => `${r.Date}|${r['Amount (EUR)']}|${r['Balance After (EUR)']}`;
 
 /** Append the rows `file` doesn't have yet; creates it with COLUMNS if missing. Returns the rows added. */
 export function appendRows(file, rows) {
-  if (!existsSync(file)) writeFileSync(file, toCsvLine(COLUMNS, Object.fromEntries(COLUMNS.map(c => [c, c]))));
+  if (!existsSync(file)) writeFileSync(file, HEADER);
   const text = readFileSync(file, 'utf8');
   const [header, ...existing] = parseCsv(text);
   for (const c of ['Date', 'Amount (EUR)', 'Balance After (EUR)']) {
@@ -195,7 +196,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   for (const r of rows.filter(r => !r.Type)) console.error(`Unknown description format: ${r['Raw Description']}`);
 
   if (!target) {
-    process.stdout.write(toCsvLine(COLUMNS, Object.fromEntries(COLUMNS.map(c => [c, c]))) + rows.map(r => toCsvLine(COLUMNS, r)).join(''));
+    process.stdout.write(HEADER + rows.map(r => toCsvLine(COLUMNS, r)).join(''));
   } else {
     const added = appendRows(target, rows);
     console.error(`${added.length} new rows appended to ${target} (${rows.length - added.length} already there)`);

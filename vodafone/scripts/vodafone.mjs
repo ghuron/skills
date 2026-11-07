@@ -3,21 +3,7 @@
  * Vodafone NL ("My Vodafone", vodafone.nl) CLI wrapper — logs in with VODAFONE_USERNAME
  * and VODAFONE_PASSWORD on every run
  *
- * Usage: node scripts/vodafone.mjs <command> [args]
- *
- * Commands:
- *   account                                   online account and billing customers
- *   products                                  subscriptions: number, plan, status
- *   product <number>                          contract dates, SIM card and PUK
- *   usage [number]                            current period: bundles left, usage, out-of-bundle costs
- *   invoices                                  invoices with period, amounts, due date and status
- *   invoice <invoiceNumber>                   invoice breakdown: subscriptions, usage, per-number totals
- *   invoice <invoiceNumber> <number>          one number's lines: subscriptions, usage per kind, credits
- *   pdf <invoiceNumber> [file.pdf]            download an invoice PDF
- *   events <invoiceNumber> <number> [voice|data|sms]
- *                                             billed calls, data sessions and texts on an invoice
- *   internet [number]                         whether mobile internet is on, per number
- *   internet <number> on|off                  switch a number's mobile internet on or off
+ * Usage: node scripts/vodafone.mjs <command> [args]   (commands: see USAGE below)
  */
 
 import { fileURLToPath } from 'url';
@@ -146,7 +132,7 @@ export async function login(username = process.env.VODAFONE_USERNAME, password =
   if (next?.pathname !== '/sso/authorize') {
     const params = next?.searchParams;
     const known = params && Object.keys(LOGIN_ERRORS).find(k => params.has(k) || params.get('error') === k);
-    if (known) throw Object.assign(new Error(LOGIN_ERRORS[known]), { rejected: true });
+    if (known) throw new Error(LOGIN_ERRORS[known]);
     throw new Error(`Login flow changed: after the password, HTTP ${post.status} to ${next?.pathname ?? 'nowhere'} `
       + '(an extra step such as two-factor login is not supported)');
   }
@@ -238,6 +224,7 @@ const LOCAL = new Intl.DateTimeFormat('sv-SE', {
 
 /** epoch ms -> "2026-10-01" (Amsterdam) */
 const day = ms => ms == null ? null : LOCAL.format(ms).slice(0, 10);
+const span = x => ({ from: day(x?.start_date), to: day(x?.end_date) });
 
 /** epoch ms -> "2026-10-01T14:58:44+02:00" (Amsterdam) */
 const localTime = ms => ms == null ? null : LOCAL.format(ms).replace(' ', 'T').replace(' GMT', '');
@@ -416,8 +403,11 @@ async function usageOf(session, p) {
   };
 }
 
+/** The product for one number, or all of them. */
+const productsFor = async (session, which) => which ? [await findProduct(session, which)] : products(session);
+
 export async function usage(session, which) {
-  const list = which ? [await findProduct(session, which)] : await products(session);
+  const list = await productsFor(session, which);
   return Promise.all(list.map(p => usageOf(session, p)));
 }
 
@@ -472,7 +462,7 @@ export async function invoices(session) {
     invoices: list.map(({ raw: i }) => ({
       invoiceNumber: i.number,
       month: `${i.cycle.year}-${String(i.cycle.month).padStart(2, '0')}`,
-      usagePeriod: { from: day(i.cycle.start_date), to: day(i.cycle.end_date) },
+      usagePeriod: span(i.cycle),
       date: day(i.creation_date),
       dueDate: day(i.due_date),
       paidDate: day(i.paid_date),
@@ -524,7 +514,7 @@ export async function invoice(session, number, which) {
     total: euro(c.total),
     vat: c.tax_charges_total?.vat_amount ?? null,
     subscriptions: {
-      period: { from: day(c.recurring_charges_period?.start_date), to: day(c.recurring_charges_period?.end_date) },
+      period: span(c.recurring_charges_period),
       total: euro(c.recurring_charges_total),
       items: (c.recurring_charges ?? []).map(recurring),
     },
@@ -571,7 +561,7 @@ async function numberInvoice(session, inv, sub) {
     name: d.subscriber_name ?? null,
     total: euro(d.total),
     subscriptions: {
-      period: { from: day(d.recurring_charges_period?.start_date), to: day(d.recurring_charges_period?.end_date) },
+      period: span(d.recurring_charges_period),
       items: (d.recurring_charges ?? []).map(recurring),
     },
     usage: (d.subscriber_usage_charges ?? []).flatMap(u => (u.event_charges_summaries ?? []).map(x => {
@@ -645,7 +635,8 @@ export async function events(session, number, which, type) {
       if (!rows.length || page * PAGE >= (res.total_results ?? 0)) return out;
     }
   }));
-  return perType.flat().sort((a, b) => a.time.localeCompare(b.time));
+  // By instant: on the DST-end night the string order puts 02:15+01:00 before 02:30+02:00.
+  return perType.flat().sort((a, b) => Date.parse(a.time) - Date.parse(b.time));
 }
 
 // ---------------------------------------------------------------------------
@@ -672,7 +663,7 @@ const internetOf = (p, s) => ({
 
 export async function internet(session, which, state) {
   if (state === undefined) {
-    const list = which ? [await findProduct(session, which)] : await products(session);
+    const list = await productsFor(session, which);
     return Promise.all(list.map(async p => internetOf(p, await internetSetting(session, p))));
   }
   if (!['on', 'off'].includes(state)) throw new Error('Switch internet with on or off: internet <number> on|off');

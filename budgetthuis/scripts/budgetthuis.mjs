@@ -4,23 +4,12 @@
  * reads the session from BUDGETTHUIS_SESSION (set by `login`); BUDGETTHUIS_LOGIN is the
  * account's email address, used only by `login`
  *
- * Usage: node scripts/budgetthuis.mjs <command> [args]
- *
- * Commands:
- *   login                            email a login link to BUDGETTHUIS_LOGIN
- *   login <link>                     sign in with that link; saves BUDGETTHUIS_SESSION to .env
- *   account                          customer number, name, address, masked contact/bank details
- *   contracts                        contracts: id, status, start, duration, supply address
- *   tariffs                          current contract terms and tariffs (per kWh / m³ / month)
- *   termijnbedrag [contractId]       monthly instalment, advice and allowed range
- *   invoices                         invoices with amount, due date and open balance
- *   invoice <invoiceId> [file.pdf]   download an invoice PDF
- *   usage <from> <to> [hour|day|week|month] [contractId]
- *                                    electricity, feed-in, gas and costs, dates YYYY-MM-DD
+ * Usage: node scripts/budgetthuis.mjs <command> [args]   (commands: see USAGE below)
  */
 
 import { fileURLToPath } from 'url';
 import { existsSync, readFileSync, writeFileSync } from 'fs';
+import { setTimeout as sleep } from 'timers/promises';
 
 // Credentials may also sit in a .env in the skill folder; variables already set win.
 const ENV_FILE = new URL('../.env', import.meta.url);
@@ -93,7 +82,7 @@ async function http(url, init) {
       return await fetch(url, init);
     } catch (e) {
       if (!(e instanceof TypeError) || attempt === 3) throw e;
-      await new Promise(r => setTimeout(r, 1000 * attempt));
+      await sleep(1000 * attempt);
     }
   }
 }
@@ -353,8 +342,9 @@ function value(label, raw) {
 
 export async function tariffs(session) {
   const html = await (await portal(session, '/energie/contracten')).text();
-  const spec = html.slice(html.indexOf('print-me'));
-  if (spec.length === html.length) throw new Error('Portal changed: no tariff specification on /energie/contracten');
+  const at = html.indexOf('print-me');
+  if (at < 0) throw new Error('Portal changed: no tariff specification on /energie/contracten');
+  const spec = html.slice(at);
 
   // The printable "Tarievenspecificatie": <div class="details"><h3>section</h3> left/right pairs ...
   // Unknown sections keep their Dutch title, so a dynamic or electricity-only contract still comes through.
@@ -372,7 +362,7 @@ export async function tariffs(session) {
   }
 
   // The "Jouw contract" box above it has the discount, renewal offer and exit fee.
-  const box = html.slice(0, html.indexOf('print-me'));
+  const box = html.slice(0, at);
   const discount = box.match(/Budget korting:\s*<\/div>\s*<div class="right">([\s\S]*?)<\/div>/);
   const fee = box.match(/Indicatie opzegvergoeding<\/h3>([\s\S]*?)<\/div>/);
   return {
@@ -404,23 +394,19 @@ export async function termijnbedrag(session, contractId) {
     && html.match(/id="loadErrorMonthlyAmountManager"[\s\S]*?<h2[^>]*>([\s\S]*?)<\/h2>[\s\S]*?<p>([\s\S]*?)<\/p>/);
   if (off) throw new Error(`Termijnbedrag Manager unavailable, the portal says: ${text(off[1])}. ${text(off[2])}`);
   const t = text(html);
-  const num = (re, what) => {
-    const m = t.match(re);
-    if (!m) throw new Error(`Portal changed: could not find ${what} on /energie/wijzigen-termijnbedrag`);
-    return m[1];
-  };
   const opt = re => t.match(re)?.[1] ?? null;
+  const optNum = re => Number(opt(re)) || null;
   const optDate = re => { const d = opt(re); return d && isoDate(d); };
   return {
-    current: euros(num(/Je termijnbedrag €\s*([\d.,]+)/, 'current amount')),
-    advice: euros(num(/Ons advies €\s*([\d.,]+)/, 'advice')),
+    current: euros(extract(t, /Je termijnbedrag €\s*([\d.,]+)/, 'current amount', 'Portal')),
+    advice: euros(extract(t, /Ons advies €\s*([\d.,]+)/, 'advice', 'Portal')),
     minimum: +extract(html, /data-hard-minimum="(\d+)"/, 'minimum', 'Portal'),
     maximum: +extract(html, /data-hard-maximum="(\d+)"/, 'maximum', 'Portal'),
     message: opt(/(Je termijnbedrag (?:is|kan|moet)[^.]*\.(?:[^.]*dit is niet verplicht\.)?)/),
     adviceUpdated: optDate(/advies is bijgewerkt op:\s*(\d\d-\d\d-\d{4})/),
-    basedOnKwh: +(opt(/(\d+) kWh stroom/) ?? NaN) || null,
-    basedOnGasM3: +(opt(/(\d+) m³ gas/) ?? NaN) || null,
-    remainingTerms: +(opt(/nog (\d+) termijnbedrag/) ?? NaN) || null,
+    basedOnKwh: optNum(/(\d+) kWh stroom/),
+    basedOnGasM3: optNum(/(\d+) m³ gas/),
+    remainingTerms: optNum(/nog (\d+) termijnbedrag/),
     yearlyReadingDate: optDate(/Op (\d\d-\d\d-\d{4}) zullen we/),
   };
 }
@@ -510,7 +496,9 @@ export async function usage(session, from, to, resolution = 'day', contractId) {
     const start = r.periodFrom.slice(0, 10);
     if (start > to || (start < from && r.periodTo.slice(0, 10) <= from)) continue;
     if (!r.usageElectricityConsumption && !r.usageGasConsumption) continue; // no reading (yet)
-    const elk = r.usageElectricityConsumption ? 0 : null; // within a reading, a missing split is 0
+    // Within a reading, a missing normal/low split is 0.
+    const elk = r.usageElectricityConsumption ? 0 : null;
+    const ret = r.usageElectricityProduction ? 0 : null;
     out.push({
       from: r.periodFrom,
       to: r.periodTo,
@@ -518,8 +506,8 @@ export async function usage(session, from, to, resolution = 'day', contractId) {
       kwhNormal: amount(r.usageElectricityNormalConsumption) ?? elk,
       kwhLow: amount(r.usageElectricityLowConsumption) ?? elk,
       kwhReturn: amount(r.usageElectricityProduction),
-      kwhReturnNormal: amount(r.usageElectricityNormalProduction) ?? (r.usageElectricityProduction ? 0 : null),
-      kwhReturnLow: amount(r.usageElectricityLowProduction) ?? (r.usageElectricityProduction ? 0 : null),
+      kwhReturnNormal: amount(r.usageElectricityNormalProduction) ?? ret,
+      kwhReturnLow: amount(r.usageElectricityLowProduction) ?? ret,
       gasM3: amount(r.usageGasConsumption),
       costElectricity: eur(r.costsElectricityConsumption),
       costReturn: eur(r.costsElectricityProduction),

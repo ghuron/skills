@@ -4,22 +4,7 @@
  * app does; reads the session from ECOVACS_SESSION (set by `login`); ECOVACS_EMAIL is the
  * account's email address, used only by `login`
  *
- * Usage: node scripts/ecovacs.mjs <command> [args]
- *
- * Commands:
- *   login                    email a verification code to ECOVACS_EMAIL
- *   login <code>             verify with that code; saves ECOVACS_SESSION to .env
- *   robots                   robots on the account: name, model, online
- *   status                   state, battery, errors, suction, water, current or last job, station
- *   consumables              brushes, filter, mop pads, dust bag: percent and hours left
- *   history [count]          recent cleaning jobs, newest first (default 10)
- *   rooms                    rooms on the map in use
- *   clean [room,...]         start cleaning the whole home, or only the listed rooms
- *   pause | resume | stop    pause, resume or end the job
- *   dock                     go back to the station
- *   locate                   say "I'm here"
- *   suction <level>          quiet, standard, max or max+
- *   water <level>            low, medium, high or ultrahigh mopping water
+ * Usage: node scripts/ecovacs.mjs <command> [args]   (commands: see USAGE below)
  */
 
 import { fileURLToPath } from 'url';
@@ -105,7 +90,7 @@ async function accountApi(url, params) {
   if (!r.ok) throw new Error(`HTTP ${r.status} from ${new URL(url).pathname}`);
   const res = await r.json(); // served as text/plain
   if (res.code === '0000') return res.data;
-  if (ACCOUNT_ERRORS[res.code]) throw Object.assign(new Error(ACCOUNT_ERRORS[res.code]), { rejected: true });
+  if (ACCOUNT_ERRORS[res.code]) throw new Error(ACCOUNT_ERRORS[res.code]);
   throw new Error(`Ecovacs answered ${res.code} "${res.msg}" to ${new URL(url).pathname.split('/').slice(-2).join('/')}`);
 }
 

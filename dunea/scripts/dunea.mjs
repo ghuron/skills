@@ -3,18 +3,12 @@
  * Dunea drinking water (dunea.nl, "Mijn Dunea") CLI wrapper — logs in with DUNEA_EMAIL
  * and DUNEA_PASSWORD on every run
  *
- * Usage: node scripts/dunea.mjs <command> [args]
- *
- * Commands:
- *   account                                customer number, contact details, payment method, contracts
- *   invoices                               advance invoices and yearly bills, open and paid
- *   invoice <invoiceNumber> [file.pdf]     download an invoice PDF
- *   voorschot [agreementId]                advance payment: amount, term, allowed range
- *   usage [agreementId]                    meter readings and water use per yearly period
+ * Usage: node scripts/dunea.mjs <command> [args]   (commands: see USAGE below)
  */
 
 import { fileURLToPath } from 'url';
 import { existsSync, writeFileSync } from 'fs';
+import { setTimeout as sleep } from 'timers/promises';
 
 // Credentials may also sit in a .env in the skill folder; variables already set win.
 const ENV_FILE = new URL('../.env', import.meta.url);
@@ -45,9 +39,9 @@ const UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Geck
 // tries (retryLimit) before B2C makes the user wait, so a failed login is never retried.
 // ---------------------------------------------------------------------------
 
-function extract(html, re, what, flow = 'Login') {
+function extract(html, re, what) {
   const m = html.match(re);
-  if (!m) throw new Error(`${flow} flow changed: could not find ${what}`);
+  if (!m) throw new Error(`Login flow changed: could not find ${what}`);
   return m[1];
 }
 
@@ -58,7 +52,7 @@ async function http(url, init) {
       return await fetch(url, init);
     } catch (e) {
       if (!(e instanceof TypeError) || attempt === 3) throw e;
-      await new Promise(r => setTimeout(r, 1000 * attempt));
+      await sleep(1000 * attempt);
     }
   }
 }
@@ -210,13 +204,13 @@ function checkAid(agreementId, shown) {
 /** "1.234,56" / "€105,96" -> 1234.56 / 105.96; "" -> null */
 const euros = s => s ? +s.replace(/[€\s.]/g, '').replace(',', '.') : null;
 
-const MONTHS = ['jan', 'feb', 'maa', 'apr', 'mei', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'];
+const MONTHS = { jan: 1, feb: 2, maa: 3, mrt: 3, apr: 4, mei: 5, jun: 6, jul: 7, aug: 8, sep: 9, okt: 10, nov: 11, dec: 12 };
 
 /** "29 september 2026" / "03 nov 2023" / "1 mrt 2025" -> "2026-09-29" / "2023-11-03" / "2025-03-01" */
 function isoDate(s) {
   const m = s?.trim().match(/^(\d{1,2}) ([a-z]+)\.? (\d{4})$/i);
   if (!m) return s || null;
-  const mon = m[2].toLowerCase() === 'mrt' ? 3 : MONTHS.indexOf(m[2].slice(0, 3).toLowerCase()) + 1;
+  const mon = MONTHS[m[2].slice(0, 3).toLowerCase()];
   if (!mon) return s;
   return `${m[3]}-${String(mon).padStart(2, '0')}-${m[1].padStart(2, '0')}`;
 }

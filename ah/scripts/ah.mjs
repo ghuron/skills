@@ -3,17 +3,7 @@
  * Albert Heijn CLI — goes through api.ah.nl, as the Albert Heijn app does; reads the session
  * from AH_SESSION (set by `login`)
  *
- * Usage: node scripts/ah.mjs <command> [args]
- *
- * Commands:
- *   login                                      print the address to sign in at
- *   login <code>                               trade the code the sign-in ends with for a session; saves AH_SESSION to .env
- *   orders                                     online orders, newest first
- *   order <orderId>                            an order's products, delivery and invoice
- *   invoice <orderId> [file.pdf]               download an order's invoice (factuur) PDF
- *   receipts [count|all]                       in-store receipts (kassabonnen), newest first (default 20)
- *   receipt <id>                               a receipt's products, discounts, payments and VAT
- *   csv [--force] [--out <dir>] <pdf|dir>...   invoice PDFs -> <order number>.csv
+ * Usage: node scripts/ah.mjs <command> [args]   (commands: see USAGE below)
  */
 
 import { spawnSync } from 'child_process';
@@ -102,6 +92,8 @@ export async function exchangeCode(code) {
   }
 }
 
+const RELOGIN = 'AH no longer accepts AH_SESSION: run `node scripts/ah.mjs login`.';
+
 /** Writes AH_SESSION into the skill folder's .env, keeping its other lines. */
 function saveSession(session) {
   const file = fileURLToPath(ENV_FILE);
@@ -122,7 +114,7 @@ export async function login(session = process.env.AH_SESSION) {
     saveSession(sessionOf(res));
     return { token: res.access_token };
   } catch (e) {
-    if (e.status === 401) throw new Error('AH no longer accepts AH_SESSION: run `node scripts/ah.mjs login`.');
+    if (e.status === 401) throw new Error(RELOGIN);
     throw e;
   }
 }
@@ -134,7 +126,7 @@ export async function login(session = process.env.AH_SESSION) {
 
 async function call(s, path, accept = 'application/json') {
   const r = await http(`${API}/${path}`, { headers: { ...HEADERS, Accept: accept, Authorization: `Bearer ${s.token}` } });
-  if (r.status === 401) throw new Error('AH no longer accepts AH_SESSION: run `node scripts/ah.mjs login`.');
+  if (r.status === 401) throw new Error(RELOGIN);
   if (!r.ok) throw new Error(`HTTP ${r.status} for /${path.split('?')[0]}`);
   return r;
 }
@@ -149,7 +141,7 @@ export async function graphql(s, query, variables = {}) {
     headers: { ...HEADERS, 'Content-Type': 'application/json', Authorization: `Bearer ${s.token}` },
     body: JSON.stringify({ query, variables }),
   });
-  if (r.status === 401) throw new Error('AH no longer accepts AH_SESSION: run `node scripts/ah.mjs login`.');
+  if (r.status === 401) throw new Error(RELOGIN);
   const res = await r.json().catch(() => ({}));
   if (res.errors?.length) throw new Error(`AH GraphQL: ${res.errors.map(e => e.message).join('; ')}`);
   if (!r.ok || !res.data) throw new Error(`HTTP ${r.status} from /graphql`);
@@ -281,7 +273,7 @@ export async function receipts(s, count = 20) {
 }
 
 export async function receipt(s, id) {
-  const { posReceiptDetails: r } = await graphql(s, `query($id: String!) {
+  const r = await graphql(s, `query($id: String!) {
     posReceiptDetails(id: $id) {
       id
       products {
@@ -294,9 +286,8 @@ export async function receipt(s, id) {
       vat { levels { percentage salesAmount { amount } amount { amount } } }
       transaction { store lane dateTime }
     }
-  }`, { id }).catch(e => {
-    // an unknown id gives only this
-    throw /Subgraph errors redacted/.test(e.message) ? new Error(`AH has no receipt ${id} (see \`receipts\`)`) : e;
+  }`, { id }).then(d => d.posReceiptDetails, e => {
+    if (!/Subgraph errors redacted/.test(e.message)) throw e; // what an unknown id gives
   });
   if (!r) throw new Error(`AH has no receipt ${id} (see \`receipts\`)`);
   return {

@@ -43,7 +43,7 @@ Money is EUR including VAT; times are Amsterdam local.
 `orders`: `state` is `CONFIRMED` while an order can still be changed (until `changeableUntil`), then
 `DELIVERED`; `slot` is the delivery window on `date`. `total` is what the order showed; the invoice
 can differ, because items that weren't delivered, returned deposits and later top-ups are settled on
-it. AH lists only the 25 most recent orders.
+it.
 
 `order`: `quantity` is how many were ordered. `price` and `bonus` are today's price and Bonus offer,
 not what a delivered order cost: that is on its invoice. `invoiceId` is null until the order is

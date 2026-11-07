@@ -3,20 +3,13 @@
  * ICS (International Card Services, icscards.nl) credit card CLI wrapper — reads the
  * session from ICSCARDS_SESSION (set by `login`, which needs approval in the ICS app)
  *
- * Usage: node scripts/icscards.mjs <command> [args]
- *
- * Commands:
- *   login                                  log in; approve in the ICS app; saves ICSCARDS_SESSION to .env
- *   account                                cards, credit limit, balance, spending left, last statement
- *   statements                             monthly statement periods with opening and closing balance
- *   statement <period> [file.pdf]          download a monthly statement PDF (period YYYY-MM)
- *   transactions [period [untilPeriod]]    transactions of the current period, or of statement periods
- *
- * --account <accountNumber> picks an account other than the default one.
+ * Usage: node scripts/icscards.mjs <command> [args] [--account <accountNumber>]   (commands: see USAGE below)
  */
 
 import { fileURLToPath } from 'url';
 import { existsSync, readFileSync, writeFileSync } from 'fs';
+import { parseArgs } from 'util';
+import { setTimeout as sleep } from 'timers/promises';
 
 // Credentials may also sit in a .env in the skill folder; variables already set win.
 const ENV_FILE = new URL('../.env', import.meta.url);
@@ -64,7 +57,7 @@ async function http(url, init) {
       return await fetch(url, init);
     } catch (e) {
       if (!(e instanceof TypeError) || attempt === 3) throw e;
-      await new Promise(r => setTimeout(r, 1000 * attempt));
+      await sleep(1000 * attempt);
     }
   }
 }
@@ -134,7 +127,7 @@ export async function login({
   let token;
   for (const end = Date.now() + timeout; !token;) {
     if (Date.now() > end) throw new Error(`Not approved in the ICS app within ${timeout / 60_000} minutes; run \`login\` again.`);
-    await new Promise(res => setTimeout(res, POLL_INTERVAL));
+    await sleep(POLL_INTERVAL);
     const v = await pub('authentication/usertoken/authentication/verify', {}, { jwt: r.body.jwt, cookies });
     if (v.body.token) token = v.body.token;
     else if (v.body.errorCode !== '00218' && v.status < 500) {
@@ -152,8 +145,9 @@ export async function login({
 /** Writes ICSCARDS_SESSION into the skill folder's .env, keeping its other lines. */
 function saveSession(session) {
   const file = fileURLToPath(ENV_FILE);
-  const lines = (existsSync(file) ? readFileSync(file, 'utf8').split('\n') : [])
-    .filter(l => l && !l.startsWith('ICSCARDS_SESSION='));
+  const lines = (existsSync(file) ? readFileSync(file, 'utf8') : '').split('\n')
+    .filter(l => !l.startsWith('ICSCARDS_SESSION='));
+  while (lines.length && !lines.at(-1).trim()) lines.pop();
   writeFileSync(file, [...lines, `ICSCARDS_SESSION=${session}`].join('\n') + '\n', { mode: 0o600 });
   return file;
 }
@@ -308,7 +302,7 @@ export async function downloadStatement(get, period, file = `ics-${period}.pdf`,
   return { file, bytes: pdf.length };
 }
 
-export async function transactions(get, from, until = from, wanted) {
+export async function transactions(get, from, until, wanted) {
   for (const p of [from, until]) if (p && !PERIOD.test(p)) throw new Error(`Period must be YYYY-MM, not ${p}`);
   const number = await accountNumber(get, wanted);
   const periods = await get('frontendservices/periods', { accountNumber: number });
@@ -356,10 +350,8 @@ const USAGE = `Usage: node scripts/icscards.mjs <command> [args] [--account <acc
   transactions [period [untilPeriod]]  current period with pending payments, or statement periods`;
 
 async function main(argv) {
-  const at = argv.indexOf('--account');
-  const wanted = at >= 0 ? argv[at + 1] : undefined;
-  if (at >= 0) argv.splice(at, 2);
-  const [cmd, ...args] = argv;
+  const { values: { account: wanted }, positionals: [cmd, ...args] } =
+    parseArgs({ args: argv, allowPositionals: true, options: { account: { type: 'string' } } });
   const print = o => console.log(JSON.stringify(o, null, 2));
 
   if (cmd === 'login') {
@@ -372,7 +364,7 @@ async function main(argv) {
     statement: [1, g => downloadStatement(g, args[0], args[1], wanted)],
     transactions: [0, g => transactions(g, args[0], args[1], wanted)],
   };
-  if (!commands[cmd] || args.length < commands[cmd][0] || (at >= 0 && !wanted)) { console.error(USAGE); process.exit(1); }
+  if (!commands[cmd] || args.length < commands[cmd][0]) { console.error(USAGE); process.exit(1); }
   print(await commands[cmd][1](client()));
 }
 

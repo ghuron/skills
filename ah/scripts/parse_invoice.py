@@ -29,9 +29,11 @@ def dec(s):
     return Decimal(s.replace('.', '').replace(',', '.'))
 
 
-def parse(path):
-    pages = [p.extract_text(extraction_mode='layout') for p in pypdf.PdfReader(path).pages]
-    order = re.search(r'Uw bestelling\s*(\d+)', pages[0]).group(1)
+def text(page):
+    return page.extract_text(extraction_mode='layout')
+
+
+def parse(path, pages):
     grand = dec(re.search(rf'Totaal inclusief btw\s+({AMT})', pages[0]).group(1))
     paid = sum((dec(a) for a in re.findall(rf'iDEAL \| Wero betaling \[\d\d-\d\d\]\s+({AMT})', '\n'.join(pages))), Decimal(0))
 
@@ -93,7 +95,7 @@ def parse(path):
     lines_sum = sum(r['Total (EUR)'] for r in rows)
     if not (lines_sum == total == grand):
         sys.exit(f'{path}: lines {lines_sum} / spec total {total} / invoice total {grand} disagree')
-    return order, rows, grand, paid
+    return rows, grand, paid
 
 
 def main():
@@ -112,15 +114,19 @@ def main():
         pdfs += sorted(glob.glob(os.path.join(a, '*.pdf'))) if os.path.isdir(a) else [a]
     seen = {}
     for path in pdfs:
-        order, rows, grand, paid = parse(path)
+        # The order number is on page 1: an invoice whose CSV exists is skipped without parsing the rest.
+        reader = pypdf.PdfReader(path)
+        first = text(reader.pages[0])
+        order = re.search(r'Uw bestelling\s*(\d+)', first).group(1)
         if order in seen:
             sys.exit(f'order {order} in both {seen[order]} and {path}')
         seen[order] = path
         out = os.path.join(out_dir or os.path.dirname(path), f'{order}.csv')
-        note = '' if paid == grand else f'  (payments on invoice {paid} != total)'
         if os.path.exists(out) and not force:
             print(f'{os.path.basename(path)} -> {order}.csv exists, skipped')
             continue
+        rows, grand, paid = parse(path, [first] + [text(p) for p in reader.pages[1:]])
+        note = '' if paid == grand else f'  (payments on invoice {paid} != total)'
         with open(out, 'w', encoding='utf-8', newline='') as f:
             w = csv.DictWriter(f, fieldnames=FIELDS, lineterminator='\r\n')
             w.writeheader()

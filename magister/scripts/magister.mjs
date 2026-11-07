@@ -3,20 +3,12 @@
  * Magister CLI wrapper — reads credentials from environment variables:
  *   MAGISTER_HOST, MAGISTER_USER, MAGISTER_PASSWORD
  *
- * Usage: node scripts/magister.mjs <command> [args]
- *
- * Commands:
- *   students                        list students (works for both parent and child credentials)
- *   schedule <id> <from> <to>       schedule with homework/tests, dates YYYY-MM-DD
- *   grades <aanmelding_id> [top]    grades (default top=50)
- *   infractions <id> <from> <to>    absences/infractions
- *   messages [top]                  inbox of the logged-in account (default top=25)
- *   message <id>                    one message with body and attachment names
- *   report-sick <id> <date> [note]  report sick (ziekmelding) for today or tomorrow; parent credentials only
+ * Usage: node scripts/magister.mjs <command> [args]   (commands: see USAGE below)
  */
 
 import { fileURLToPath } from 'url';
 import { existsSync } from 'fs';
+import { randomBytes } from 'crypto';
 
 // Credentials may also sit in a .env in the skill folder; variables already set win.
 const ENV_FILE = new URL('../.env', import.meta.url);
@@ -27,24 +19,12 @@ const HOST = (process.env.MAGISTER_HOST || '').replace(/^https?:\/\//, '').repla
 const USER = process.env.MAGISTER_USER;
 const PASS = process.env.MAGISTER_PASSWORD;
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  if (!HOST || !USER || !PASS) {
-    console.error('Set MAGISTER_HOST, MAGISTER_USER, MAGISTER_PASSWORD before running.');
-    process.exit(1);
-  }
-  if (!HOST.endsWith('.magister.net') && HOST !== 'magister.net') {
-    console.error('MAGISTER_HOST must be a *.magister.net domain.');
-    process.exit(1);
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Token acquisition (OIDC implicit flow against accounts.magister.net)
 // ---------------------------------------------------------------------------
 
 export async function acquireToken(host, user, pass) {
-  const rand = () =>
-    Buffer.from(Array.from({ length: 16 }, () => Math.random() * 256 | 0)).toString('base64url');
+  const rand = () => randomBytes(16).toString('base64url');
 
   const jar = new Map();
 
@@ -105,40 +85,23 @@ export async function acquireToken(host, user, pass) {
   return token;
 }
 
-// ---------------------------------------------------------------------------
-// Token getter (uses module-level HOST/USER/PASS by default; one login per host+user per process)
-// ---------------------------------------------------------------------------
+// One login per process
+let token;
+const getToken = () => token ??= acquireToken(HOST, USER, PASS);
 
-const tokens = new Map();
-
-export async function getToken(host = HOST, user = USER, pass = PASS) {
-  const key = `${host}\n${user}`;
-  if (!tokens.has(key)) tokens.set(key, acquireToken(host, user, pass));
-  return tokens.get(key);
-}
-
-// ---------------------------------------------------------------------------
-// Authenticated GET
-// ---------------------------------------------------------------------------
-
-export async function apiGet(path, host = HOST) {
-  const token = await getToken();
-  const url   = `https://${host}${path}`;
-  const r     = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+export async function apiGet(path) {
+  const url = `https://${HOST}${path}`;
+  const r   = await fetch(url, { headers: { Authorization: `Bearer ${await getToken()}` } });
   if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
   return r.json();
 }
 
-// ---------------------------------------------------------------------------
-// Authenticated POST (JSON body; error message includes Magister's omschrijving)
-// ---------------------------------------------------------------------------
-
-export async function apiPost(path, body, host = HOST) {
-  const token = await getToken();
-  const url   = `https://${host}${path}`;
-  const r     = await fetch(url, {
+/** POST a JSON body; the error message includes Magister's omschrijving. */
+export async function apiPost(path, body) {
+  const url = `https://${HOST}${path}`;
+  const r   = await fetch(url, {
     method:  'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${await getToken()}`, 'Content-Type': 'application/json' },
     body:    JSON.stringify(body),
   });
   const text = await r.text();
@@ -194,163 +157,127 @@ const INFO_TYPES = { 1: 'homework', 2: 'test', 3: 'exam', 4: 'quiz', 5: 'oral', 
 
 const USAGE = 'Commands: students | schedule <id> <from> <to> | grades <id> [top] | infractions <id> <from> <to> | messages [top] | message <id> | report-sick <id> <date> [note]';
 
+const commands = {
+  async students() {
+    const account = await apiGet('/api/account');
+    const id      = account.Persoon?.Id;
+    if (account.Groep?.[0]?.Naam === 'Leerling') {
+      const aanmeldingen = await apiGet(`/api/leerlingen/${id}/aanmeldingen`);
+      return aanmeldingen.items
+        .filter(a => a.isHoofdAanmelding)
+        .map(a => ({
+          id,
+          name:          `${account.Persoon.Roepnaam} ${account.Persoon.Achternaam}`.trim(),
+          aanmelding_id: a.id,
+        }));
+    }
+    const raw = await apiGet(`/api/ouders/${id}/kinderen`);
+    return raw.items.map(c => ({
+      id:            c.id,
+      name:          `${c.roepnaam} ${c.achternaam}`.trim(),
+      aanmelding_id: +((c.actieveAanmeldingen?.[0]?.links?.self?.href ?? '').split('/').at(-1)),
+    }));
+  },
+  async schedule(id, from, to) {
+    const raw = await apiGet(`/api/personen/${id}/afspraken?van=${from}&tot=${to}`);
+    return raw.Items
+      .filter(i => i.Status !== 5)
+      .map(i => ({
+        start:   toLocal(i.Start),
+        end:     toLocal(i.Einde),
+        subject: i.Vakken?.[0]?.Naam ?? i.Omschrijving,
+        teacher: i.Docenten?.[0]?.Naam ?? null,
+        room:    i.Lokatie ?? null,
+        homework: i.InfoType || i.Inhoud ? {
+          type: INFO_TYPES[i.InfoType] ?? null,
+          text: htmlToText(i.Inhoud ?? ''),
+          done: i.Afgerond,
+        } : null,
+      }));
+  },
+  async grades(id, top = '50') {
+    const raw = await apiGet(`/api/aanmeldingen/${id}/cijfers?top=${top}`);
+    return raw.items.map(g => ({
+      subject:     g.kolom.naam,
+      description: g.kolom.omschrijving,
+      grade:       g.waarde,
+      weight:      g.kolom.weegfactor,
+      passing:     g.isVoldoende,
+      type:        g.kolom.type,
+    }));
+  },
+  async infractions(id, from, to) {
+    const raw = await apiGet(`/api/personen/${id}/absenties?van=${from}&tot=${to}`);
+    return raw.Items.map(i => ({
+      type:    i.Omschrijving,
+      code:    i.Code,
+      excused: i.Geoorloofd,
+      lesson:  i.Afspraak?.Omschrijving ?? null,
+    }));
+  },
+  // Messages belong to the logged-in account, not to a student. The web app's messages page is a
+  // separate Angular app at /magister-berichten/; folders with unread counts are at
+  // /api/berichten/mappen/alle. Reading is GET-only: the web app marks a message read with a
+  // separate PATCH /api/berichten/berichten, so these commands never change read status.
+  async messages(top = '25') {
+    const raw = await apiGet(`/api/berichten/postvakin/berichten?top=${top}&skip=0`);
+    return raw.items.map(m => ({
+      id:          m.id,
+      subject:     m.onderwerp,
+      from:        m.afzender?.naam ?? null,
+      sent:        toLocal(m.verzondenOp),
+      read:        m.isGelezen,
+      priority:    m.heeftPrioriteit,
+      attachments: m.heeftBijlagen,
+    }));
+  },
+  async message(id) {
+    if (!/^\d+$/.test(id ?? '')) throw new Error('Usage: message <id>');
+    const m           = await apiGet(`/api/berichten/berichten/${id}`);
+    const attachments = m.links?.bijlagen ? (await apiGet(m.links.bijlagen.href)).items : [];
+    const names       = list => (list ?? []).map(r => r.weergavenaam);
+    return {
+      id:          m.id,
+      subject:     m.onderwerp,
+      from:        m.afzender?.naam ?? null,
+      to:          names(m.ontvangers),
+      cc:          names(m.kopieOntvangers),
+      sent:        toLocal(m.verzondenOp),
+      read:        m.isGelezen,
+      priority:    m.heeftPrioriteit,
+      body:        htmlToText(m.inhoud ?? ''),
+      attachments: attachments.map(a => ({ name: a.naam, type: a.contentType, size: a.grootte })),
+    };
+  },
+  // Mirrors the web app's "Ziek melden" (ziekmeldenController in its aanwezigheid chunk): parents
+  // only, for today or tomorrow, weekdays only. The regular attendance.overview scope suffices.
+  async 'report-sick'(id, date, note = '') {
+    if (!id || !/^\d{4}-\d{2}-\d{2}$/.test(date ?? '')) throw new Error('Usage: report-sick <id> <YYYY-MM-DD> [note]');
+    if (![today(), addDays(today(), 1)].includes(date) || !isWeekday(date)) {
+      throw new Error(`Can only report sick for today or tomorrow, on a weekday (today is ${today()}).`);
+    }
+    if (note.length > 255) throw new Error('Note must be at most 255 characters.');
+    // The school decides per student whether parents may report absence; the absenties
+    // response carries the POST link only when it is allowed.
+    const absences = await apiGet(`/api/personen/${id}/absenties?van=${date}&tot=${date}`);
+    const link     = absences.Links?.find(l => l.Rel === 'absentiemelding')?.Href;
+    if (!link) {
+      throw new Error('Reporting sick is not available for this student (needs parent credentials, and the school must allow it).');
+    }
+    await apiPost(link, {
+      begin:     amsterdamMidnight(date),
+      einde:     amsterdamMidnight(addDays(date, 1)),
+      opmerking: note.trim(),
+    });
+    return { reported: true, id: +id, date, note: note.trim() };
+  },
+};
+
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const [cmd, ...rest] = process.argv.slice(2);
-
-  async function run() {
-    switch (cmd) {
-      case 'token': case 'account': case 'get': case 'children': {
-        console.error(USAGE);
-        process.exit(1);
-      }
-      case 'students': {
-        const account = await apiGet('/api/account');
-        const id      = account.Persoon?.Id;
-        const role    = account.Groep?.[0]?.Naam;
-        let students;
-        if (role === 'Leerling') {
-          const aanmeldingen = await apiGet(`/api/leerlingen/${id}/aanmeldingen`);
-          students = aanmeldingen.items
-            .filter(a => a.isHoofdAanmelding)
-            .map(a => ({
-              id,
-              name:          `${account.Persoon.Roepnaam} ${account.Persoon.Achternaam}`.trim(),
-              aanmelding_id: a.id,
-            }));
-        } else {
-          const raw = await apiGet(`/api/ouders/${id}/kinderen`);
-          students = raw.items.map(c => ({
-            id:            c.id,
-            name:          `${c.roepnaam} ${c.achternaam}`.trim(),
-            aanmelding_id: +((c.actieveAanmeldingen?.[0]?.links?.self?.href ?? '').split('/').at(-1)),
-          }));
-        }
-        console.log(JSON.stringify(students));
-        break;
-      }
-      case 'schedule': {
-        const [id, from, to] = rest;
-        const raw = await apiGet(`/api/personen/${id}/afspraken?van=${from}&tot=${to}`);
-        console.log(JSON.stringify(
-          raw.Items
-            .filter(i => i.Status !== 5)
-            .map(i => ({
-              start:   toLocal(i.Start),
-              end:     toLocal(i.Einde),
-              subject: i.Vakken?.[0]?.Naam ?? i.Omschrijving,
-              teacher: i.Docenten?.[0]?.Naam ?? null,
-              room:    i.Lokatie ?? null,
-              homework: i.InfoType || i.Inhoud ? {
-                type: INFO_TYPES[i.InfoType] ?? null,
-                text: htmlToText(i.Inhoud ?? ''),
-                done: i.Afgerond,
-              } : null,
-            }))
-        ));
-        break;
-      }
-      case 'grades': {
-        const [id, top = '50'] = rest;
-        const raw = await apiGet(`/api/aanmeldingen/${id}/cijfers?top=${top}`);
-        console.log(JSON.stringify(raw.items.map(g => ({
-          subject:     g.kolom.naam,
-          description: g.kolom.omschrijving,
-          grade:       g.waarde,
-          weight:      g.kolom.weegfactor,
-          passing:     g.isVoldoende,
-          type:        g.kolom.type,
-        }))));
-        break;
-      }
-      case 'infractions': {
-        const [id, from, to] = rest;
-        const raw = await apiGet(`/api/personen/${id}/absenties?van=${from}&tot=${to}`);
-        console.log(JSON.stringify(raw.Items.map(i => ({
-          type:    i.Omschrijving,
-          code:    i.Code,
-          excused: i.Geoorloofd,
-          lesson:  i.Afspraak?.Omschrijving ?? null,
-        }))));
-        break;
-      }
-      // Messages belong to the logged-in account, not to a student. The web app's messages page is a
-      // separate Angular app at /magister-berichten/; folders with unread counts are at
-      // /api/berichten/mappen/alle. Reading is GET-only: the web app marks a message read with a
-      // separate PATCH /api/berichten/berichten, so these commands never change read status.
-      case 'messages': {
-        const [top = '25'] = rest;
-        const raw = await apiGet(`/api/berichten/postvakin/berichten?top=${top}&skip=0`);
-        console.log(JSON.stringify(raw.items.map(m => ({
-          id:          m.id,
-          subject:     m.onderwerp,
-          from:        m.afzender?.naam ?? null,
-          sent:        toLocal(m.verzondenOp),
-          read:        m.isGelezen,
-          priority:    m.heeftPrioriteit,
-          attachments: m.heeftBijlagen,
-        }))));
-        break;
-      }
-      case 'message': {
-        const [id] = rest;
-        if (!/^\d+$/.test(id ?? '')) {
-          console.error('Usage: message <id>');
-          process.exit(1);
-        }
-        const m           = await apiGet(`/api/berichten/berichten/${id}`);
-        const attachments = m.links?.bijlagen ? (await apiGet(m.links.bijlagen.href)).items : [];
-        const names       = list => (list ?? []).map(r => r.weergavenaam);
-        console.log(JSON.stringify({
-          id:          m.id,
-          subject:     m.onderwerp,
-          from:        m.afzender?.naam ?? null,
-          to:          names(m.ontvangers),
-          cc:          names(m.kopieOntvangers),
-          sent:        toLocal(m.verzondenOp),
-          read:        m.isGelezen,
-          priority:    m.heeftPrioriteit,
-          body:        htmlToText(m.inhoud ?? ''),
-          attachments: attachments.map(a => ({ name: a.naam, type: a.contentType, size: a.grootte })),
-        }));
-        break;
-      }
-      case 'report-sick': {
-        // Mirrors the web app's "Ziek melden" (ziekmeldenController in its aanwezigheid chunk): parents
-        // only, for today or tomorrow, weekdays only. The regular attendance.overview scope suffices.
-        const [id, date, note = ''] = rest;
-        if (!id || !/^\d{4}-\d{2}-\d{2}$/.test(date ?? '')) {
-          console.error('Usage: report-sick <id> <YYYY-MM-DD> [note]');
-          process.exit(1);
-        }
-        if (![today(), addDays(today(), 1)].includes(date) || !isWeekday(date)) {
-          console.error(`Can only report sick for today or tomorrow, on a weekday (today is ${today()}).`);
-          process.exit(1);
-        }
-        if (note.length > 255) {
-          console.error('Note must be at most 255 characters.');
-          process.exit(1);
-        }
-        // The school decides per student whether parents may report absence; the absenties
-        // response carries the POST link only when it is allowed.
-        const absences = await apiGet(`/api/personen/${id}/absenties?van=${date}&tot=${date}`);
-        const link     = absences.Links?.find(l => l.Rel === 'absentiemelding')?.Href;
-        if (!link) {
-          console.error('Reporting sick is not available for this student (needs parent credentials, and the school must allow it).');
-          process.exit(1);
-        }
-        await apiPost(link, {
-          begin:     amsterdamMidnight(date),
-          einde:     amsterdamMidnight(addDays(date, 1)),
-          opmerking: note.trim(),
-        });
-        console.log(JSON.stringify({ reported: true, id: +id, date, note: note.trim() }));
-        break;
-      }
-      default:
-        console.error(USAGE);
-        process.exit(1);
-    }
-  }
-
-  run().catch(e => { console.error(e.message); process.exit(1); });
+  const fail = msg => { console.error(msg); process.exit(1); };
+  if (!HOST || !USER || !PASS) fail('Set MAGISTER_HOST, MAGISTER_USER, MAGISTER_PASSWORD before running.');
+  if (!HOST.endsWith('.magister.net') && HOST !== 'magister.net') fail('MAGISTER_HOST must be a *.magister.net domain.');
+  if (!Object.hasOwn(commands, cmd)) fail(USAGE);
+  commands[cmd](...rest).then(out => console.log(JSON.stringify(out)), e => fail(e.message));
 }

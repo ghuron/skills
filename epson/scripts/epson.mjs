@@ -12,6 +12,8 @@
 
 import { fileURLToPath } from 'url';
 import { existsSync } from 'fs';
+import { once } from 'events';
+import { text } from 'stream/consumers';
 import https from 'https';
 
 // EPSON_HOST may also sit in a .env in the skill folder; variables already set win.
@@ -31,17 +33,10 @@ const HOST = process.env.EPSON_HOST;
 
 const AGENT = new https.Agent({ rejectUnauthorized: false });
 
-function httpsGet(url, timeoutMs = 10_000) {
-  return new Promise((resolve, reject) => {
-    const req = https.get(url, { agent: AGENT }, res => {
-      let body = '';
-      res.on('data', chunk => body += chunk);
-      res.on('end', () => resolve({ status: res.statusCode, body }));
-    });
-    const timer = setTimeout(() => req.destroy(new Error(`Timed out after ${timeoutMs}ms`)), timeoutMs);
-    req.on('error', e => { clearTimeout(timer); reject(e); });
-    req.on('close', () => clearTimeout(timer));
-  });
+async function httpsGet(url) {
+  const req = https.get(url, { agent: AGENT, signal: AbortSignal.timeout(10_000) });
+  const [res] = await once(req, 'response');
+  return { status: res.statusCode, body: await text(res) };
 }
 
 // ---------------------------------------------------------------------------
@@ -57,27 +52,14 @@ const PRIMARY  = host => `https://${host}/PRESENTATION/HTML/TOP/PRTINFO.HTML`;
 const FALLBACK = host => `https://${host}/PRESENTATION/ADVANCED/INFO_MENTINFO/TOP`;
 
 export async function fetchPage(host) {
-  let r;
-  try {
-    r = await httpsGet(PRIMARY(host));
-  } catch (e) {
-    throw new Error(`Cannot reach printer at ${host}: ${e.message}`);
-  }
-
-  if (r.status < 200 || r.status >= 300) {
-    let r2;
-    try {
-      r2 = await httpsGet(FALLBACK(host));
-    } catch (e) {
-      throw new Error(`Cannot reach printer at ${host}: ${e.message}`);
-    }
-    if (r2.status < 200 || r2.status >= 300) {
-      throw new Error(`Printer returned HTTP ${r.status} and fallback HTTP ${r2.status}`);
-    }
-    return r2.body;
-  }
-
-  return r.body;
+  // A timeout's AbortError carries "aborted due to timeout" in its cause.
+  const get = url => httpsGet(url).catch(e => { throw new Error(`Cannot reach printer at ${host}: ${(e.cause ?? e).message}`); });
+  const ok = r => r.status >= 200 && r.status < 300;
+  const r = await get(PRIMARY(host));
+  if (ok(r)) return r.body;
+  const r2 = await get(FALLBACK(host));
+  if (ok(r2)) return r2.body;
+  throw new Error(`Printer returned HTTP ${r.status} and fallback HTTP ${r2.status}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -125,10 +107,6 @@ export function parseInkLevels(html) {
   return results;
 }
 
-// ---------------------------------------------------------------------------
-// inkLevels — compose fetchPage + parseInkLevels
-// ---------------------------------------------------------------------------
-
 export async function inkLevels(host = HOST) {
   return parseInkLevels(await fetchPage(host));
 }
@@ -143,15 +121,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     process.exit(1);
   }
 
-  const [cmd] = process.argv.slice(2);
-
-  async function run() {
-    if (cmd !== 'ink') {
-      console.error('Commands: ink');
-      process.exit(1);
-    }
-    console.log(JSON.stringify(await inkLevels()));
+  if (process.argv[2] !== 'ink') {
+    console.error('Commands: ink');
+    process.exit(1);
   }
-
-  run().catch(e => { console.error(e.message); process.exit(1); });
+  inkLevels().then(levels => console.log(JSON.stringify(levels)), e => { console.error(e.message); process.exit(1); });
 }
