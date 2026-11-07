@@ -46,7 +46,8 @@ water tank (`ok`, `low`, `missing`), dirty water tank and dust bag.
 
 `history`: `completed` is false for a job that was stopped or interrupted.
 
-`rooms`: `id` is what `clean` takes. `name` is the name set in the app, else the room type. Rooms
-come from the saved map in use; a robot that hasn't saved a map yet has none, so `rooms` and
+`rooms`: `id` is what `clean` takes. `name` is the name set in the app, else the room type, or null
+for rooms nobody named; if the user refers to a room by name and none match, ask them to name rooms
+in the MOVAhome app. Rooms come from the saved map in use; a robot that hasn't saved a map yet has none, so `rooms` and
 `clean` with rooms fail until the home is mapped and the map saved in the app. `clean` with rooms
 does one pass with the current suction and water.
