@@ -287,6 +287,8 @@ export async function correct(card, tripId, stop) {
     throw new Error(`Trip ${tripId} can't be corrected: ${o.correctableStatus || 'no correction options'}`
       + (o.correctionWindowEnd ? ` (window until ${o.correctionWindowEnd})` : ''));
   }
+  // A free trip (e.g. covered by a subscription) gets nothing back, and the correction would be gone.
+  if (trip.fare === 0) throw new Error(`Trip ${tripId} cost nothing, so correcting it would only use up a correction`);
   const stops = o.stops || [];
   const want = String(stop).toLowerCase();
   const hits = stops.filter(s => s.privateCode === String(stop)

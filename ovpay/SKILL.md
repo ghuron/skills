@@ -33,9 +33,8 @@ and `stops` are the check-out stops to choose from.
 
 `correct` sets the check-out to that stop and OVpay recalculates the fare. It can't be undone and
 uses one of the limited corrections, so first ask the user which stop they got off at and confirm
-the card, trip and stop. Don't correct a trip that cost nothing (`fareEur: 0`, e.g. covered by a
-subscription): nothing comes back and a correction is gone. "Halte Onbekend" (unknown stop) is a
-last resort.
+the card, trip and stop. It refuses a trip that cost nothing (`fareEur: 0`, e.g. covered by a
+subscription), since nothing would come back. "Halte Onbekend" (unknown stop) is a last resort.
 
 # Auth
 
