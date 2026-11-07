@@ -38,6 +38,14 @@ function runCLI(args) {
   return JSON.parse(r.stdout);
 }
 
+// For commands the robot itself answers: skips the test (returns undefined) while it is offline.
+function runOnRobot(t, args) {
+  const r = run(args);
+  if (r.status === 1 && /is offline\.\s*$/.test(r.stderr)) return t.skip('robot offline');
+  assert.equal(r.status, 0, `CLI exited ${r.status}: ${r.stderr}`);
+  return JSON.parse(r.stdout);
+}
+
 const LOCAL_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/;
 const isNum = x => typeof x === 'number' && Number.isFinite(x);
 
@@ -92,8 +100,9 @@ test('status: state, battery, settings, job and station', { skip }, () => {
   }
 });
 
-test('consumables: known parts with percent and hours left', { skip }, () => {
-  const parts = runCLI(['consumables']);
+test('consumables: known parts with percent and hours left', { skip }, t => {
+  const parts = runOnRobot(t, ['consumables']);
+  if (!parts) return;
   assert.ok(parts.length > 0, 'expected parts');
   for (const p of parts) {
     assert.ok(['main brush', 'side brush', 'filter', 'mop pads', 'dust bag', 'unit care', 'air freshener'].includes(p.part),
@@ -115,8 +124,9 @@ test('history: newest first, with start, area, minutes and result', { skip }, ()
   assert.deepEqual(starts, [...starts].sort((a, b) => b - a), 'expected newest first');
 });
 
-test('rooms: numeric ids, names string or null', { skip }, () => {
-  const rooms = runCLI(['rooms']);
+test('rooms: numeric ids, names string or null', { skip }, t => {
+  const rooms = runOnRobot(t, ['rooms']);
+  if (!rooms) return;
   assert.ok(rooms.length > 0, 'expected rooms on the map in use');
   for (const r of rooms) {
     assert.ok(Number.isInteger(r.id));
