@@ -55,6 +55,7 @@ write_env /magister_parent magister/.env
 write_env /magister_child  magister/.child.env   # tests only
 write_env /epson           epson/.env
 write_env /ecovacs         ecovacs/.env
+write_env /mova            mova/.env
 write_env /ovpay           ovpay/.env
 write_env /budgetthuis     budgetthuis/.env
 write_env /dunea           dunea/.env

@@ -18,6 +18,7 @@ cards). Each is a small Node.js 22+ CLI without npm dependencies, plus a `SKILL.
 | [brex](brex/SKILL.md) | Brex corporate cards: expenses with cardholder, merchant, category, amounts as purchased and billed, memo and receipts, by purchase, posting or change date; receipt downloads |
 | [epson](epson/SKILL.md) | Ink levels of an Epson Expression XP-series network printer |
 | [ecovacs](ecovacs/SKILL.md) | Ecovacs DEEBOT robot vacuum: status, consumables, cleaning history, rooms; starts, pauses, stops and docks it |
+| [mova](mova/SKILL.md) | MOVA robot vacuum (MOVAhome app): status with the station's water tanks, consumables, cleaning history, rooms; starts, pauses, stops and docks it |
 
 ## Install
 
@@ -35,7 +36,7 @@ Updating with `npx skills` replaces the folder, `.env` included.
 ## Disclaimer
 
 Unofficial tools, not affiliated with or endorsed by Magister, OVpay, HTM, Budget Thuis, Dunea, Vodafone, ICS, ABN AMRO,
-Albert Heijn, Brex, Epson or Ecovacs. Most use the same undocumented APIs as the services' own websites and apps, which can change
+Albert Heijn, Brex, Epson, Ecovacs or MOVA. Most use the same undocumented APIs as the services' own websites and apps, which can change
 without notice; brex uses Brex's public API.
 
 ## License
