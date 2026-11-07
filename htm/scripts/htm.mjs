@@ -177,7 +177,11 @@ export async function orderApiCall(session, method, path, body) {
     headers,
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!r.ok) throw new Error(`HTTP ${r.status} for ${method} ${path}`);
+  if (!r.ok) {
+    // Errors are problem+json; `detail` names the cause, e.g. "Product niet gevonden".
+    const detail = (await r.json().catch(() => null))?.detail;
+    throw new Error(`HTTP ${r.status} for ${method} ${path}${detail ? `: ${detail}` : ''}`);
+  }
   return r.json();
 }
 
@@ -282,13 +286,11 @@ export async function reizen(session, tokenId, from, to) {
 // rather than fetched live, since the source data — /v1/wipkip/getdata (the
 // data behind the webshop's "Reisgebied bepalen" map tool: region polygons
 // plus ~1250 stops' coordinates, keyed by the same stopId trips carry in
-// checkinLocation/checkoutLocation) and /v3/order/product/regions/6
-// (productId 6 = Regio Vrij) — only changes on HTM's fixed annual
-// pricing/network revision date. Bundling means evaluating several family
-// members' passes costs one trip-history fetch per pass and no catalog fetch
-// at all. htm.test.mjs
-// re-fetches live and fails loudly if the bundle has drifted; run
-// `node .ci/htm/refresh.mjs` to update it. Only the Den Haag/Delft/Zoetermeer
+// checkinLocation/checkoutLocation) and /v3/order/product/regions/<Regio Vrij
+// productId> — only changes on HTM's pricing/network revisions. Bundling means
+// evaluating several family members' passes costs one trip-history fetch per
+// pass and no catalog fetch at all. htm.test.mjs re-fetches live and fails
+// loudly if the bundle has drifted; run `node .ci/htm/refresh.mjs` to update it. Only the Den Haag/Delft/Zoetermeer
 // areas (DH7x/HL6x), about half of the priced ones, have a polygon in
 // wipKipGeoData. The Rotterdam/Voorne-Putten ones (R1x/VP8x/ZH9x/M99)
 // presumably live in RET's/EBS's copy of the tool, so the catalog leaves them out.
@@ -301,7 +303,9 @@ export async function reizen(session, tokenId, from, to) {
 // *within* the area, not to/from it).
 // ---------------------------------------------------------------------------
 
-export const REGIO_VRIJ_PRODUCT_ID = 6;
+// HTM renumbered every product in autumn 2026 (Regio Vrij was 6). The current id is the
+// productId in the data of www.htm.nl/webshop/regio-vrij/.
+export const REGIO_VRIJ_PRODUCT_ID = 133;
 
 const CATALOG_PATH = new URL('../assets/regio-catalog.json', import.meta.url);
 const regioCatalog = () => JSON.parse(readFileSync(CATALOG_PATH, 'utf8'));
@@ -352,6 +356,10 @@ export function buildRegioCatalog(wipkip, regionPrices) {
       };
     })
     .filter(r => r.prices != null);
+  if (bases.length === 0) {
+    throw new Error(`No priced Regio Vrij region: has product ${REGIO_VRIJ_PRODUCT_ID} been renumbered? `
+      + 'See REGIO_VRIJ_PRODUCT_ID.');
+  }
 
   return {
     regions: bases.map(b => {
@@ -384,7 +392,8 @@ export function coverageForTrips(trips, catalog, ageProfile, months) {
     .map(r => {
       const stopIds = new Set(r.extraStopIds);
       for (const includedId of r.includes) for (const s of byId.get(includedId).extraStopIds) stopIds.add(s);
-      return { id: r.id, name: r.name, stopIds, price: r.prices.find(p => p.ageProfiles.includes(ageProfile))?.price ?? null };
+      const tier = r.prices.find(p => p.ageProfiles.includes(ageProfile));
+      return { id: r.id, name: r.name, stopIds, price: tier?.price ?? null, productId: tier?.productId ?? null };
     })
     .filter(r => r.price != null);
 
@@ -409,6 +418,7 @@ export function coverageForTrips(trips, catalog, ageProfile, months) {
       return {
         id: r.id,
         name: r.name,
+        productId: r.productId,
         price: r.price,
         coveredFare: round2(coveredFare),
         avgMonthlyCoveredFare: round2(avgMonthlyCoveredFare),
@@ -509,6 +519,13 @@ export async function reorder(session, tokenId, productId, validFrom, birthdate)
     const padId = customerToken.personalAccountData?.personalAccountDataId;
     const [method, id] = padId ? ['PATCH', padId] : ['POST', customerToken.customerTokenId];
     order = await orderApiCall(session, method, `/v3/pad/customertokens/${id}/personalaccountdata`, { birthdate });
+  }
+
+  // Some products (Regio Vrij) also want an email address on the order; the webshop fills in the
+  // account's own for a logged-in customer.
+  if (lineIn(order).validations?.some(v => v.code === 'EMAIL_ADDRESS_REQUIRED')) {
+    const { person } = await apiGet(session, '/v1/PortalCustomer/GetCustomer');
+    order = await orderApiCall(session, 'PATCH', `/v3/order/${order.orderId}/customer`, { emailAddress: person.emailAddress });
   }
 
   // Only this line's own validation matters — the draft order may carry other,

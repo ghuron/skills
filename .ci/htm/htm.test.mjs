@@ -13,17 +13,18 @@ import { readFileSync, readdirSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import {
-  login, reorder, cancelOrderline, apiGet, orderApiCall, buildRegioCatalog, REGIO_VRIJ_PRODUCT_ID,
+  login, cancelOrderline, apiGet, orderApiCall, buildRegioCatalog, REGIO_VRIJ_PRODUCT_ID,
 } from '../../htm/scripts/htm.mjs';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
 const CLI = join(DIR, '../../htm/scripts/htm.mjs');
 
-// "HTM 20% Korting" — already an orderable product on the account these .env
-// files belong to. Adjust if testing against a different account.
-const DISCOUNT_PRODUCT_ID = 5;
-// "Regio Vrij DH70 - Reductie" (Child/Teenager price) — needs the pass owner's birthdate.
-const AGE_BASED_PRODUCT_ID = 10;
+// Product ids as renumbered by HTM in autumn 2026 (they were 5 and 10); see the productId in the
+// data of www.htm.nl/webshop/htm-20-korting/ and /v3/order/product/regions/<REGIO_VRIJ_PRODUCT_ID>.
+// "HTM 20% Korting Maand", €5 — orderable on the account these .env files belong to.
+const DISCOUNT_PRODUCT_ID = 163;
+// "Regio Vrij DH70", Child/Teenager price — needs the pass owner's birthdate.
+const AGE_BASED_PRODUCT_ID = 138;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -59,6 +60,22 @@ function runCLI(args, envVars = {}) {
 const today = () => new Date().toISOString().slice(0, 10);
 const daysAgo = n => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
 const daysFromNow = n => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+
+/**
+ * Removes the draft order's lines for this product on this pass (or on no pass yet), the ones
+ * reorder() would reuse, so a test leaves the cart as it found it even when reorder failed halfway.
+ * A leftover line would otherwise skew the next run's totals, or break initialize altogether once
+ * HTM retires its product.
+ */
+async function removeLines(env, tokenId, productId) {
+  const session = await login(env.HTM_LOGIN, env.HTM_PASSWORD);
+  const order = await orderApiCall(session, 'GET', '/v3/order').catch(() => null);
+  for (const l of order?.orderLines ?? []) {
+    if (l.productId === productId && (l.customerTokens ?? []).every(t => t.ovPayTokenId === Number(tokenId))) {
+      await cancelOrderline(session, l.orderLineId).catch(() => {});
+    }
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Fixtures — all *.env files in the skill folder
@@ -140,7 +157,6 @@ for (const { name, env } of envFiles) {
   test(`${name}: reorder configures a product and is idempotent on repeat calls`, async () => {
     const passes = JSON.parse(runCLI(['passes'], env).stdout);
     const tokenId = String(passes[0].id);
-    let orderLineId;
     try {
       const first = runCLI(['reorder', tokenId, String(DISCOUNT_PRODUCT_ID), daysFromNow(20)], env);
       assert.equal(first.status, 0, first.stderr);
@@ -148,18 +164,14 @@ for (const { name, env } of envFiles) {
       assert.equal(firstOrder.totalAmount, 5);
       assert.equal(firstOrder.currency, 'EUR');
       assert.ok(firstOrder.checkoutUrl.startsWith('https://www.htm.nl/'));
-      orderLineId = firstOrder.orderLineId;
 
       const second = runCLI(['reorder', tokenId, String(DISCOUNT_PRODUCT_ID), daysFromNow(21)], env);
       assert.equal(second.status, 0, second.stderr);
       const secondOrder = JSON.parse(second.stdout);
-      assert.equal(secondOrder.orderLineId, orderLineId, 'Repeat calls should reuse the same orderline, not create a duplicate');
+      assert.equal(secondOrder.orderLineId, firstOrder.orderLineId, 'Repeat calls should reuse the same orderline, not create a duplicate');
       assert.equal(secondOrder.totalAmount, 5, 'Total should not grow from repeated calls');
     } finally {
-      if (orderLineId) {
-        const session = await login(env.HTM_LOGIN, env.HTM_PASSWORD);
-        await cancelOrderline(session, orderLineId).catch(() => {});
-      }
+      await removeLines(env, tokenId, DISCOUNT_PRODUCT_ID);
     }
   });
 
@@ -171,12 +183,8 @@ for (const { name, env } of envFiles) {
       assert.notEqual(status, 0, `Expected reorder to fail for a start date far in the future, got: ${stdout}`);
       assert.match(stderr, /too far in the future/i);
     } finally {
-      // The rejected date still gets written server-side, leaving the line
-      // invalid. Fix it with a valid date (reorder() is idempotent — same
-      // orderline) and remove it so the account is left as it was found.
-      const session = await login(env.HTM_LOGIN, env.HTM_PASSWORD);
-      const fixed = await reorder(session, tokenId, DISCOUNT_PRODUCT_ID, today()).catch(() => null);
-      if (fixed) await cancelOrderline(session, fixed.orderLineId).catch(() => {});
+      // The rejected date still gets written server-side, leaving an invalid line.
+      await removeLines(env, tokenId, DISCOUNT_PRODUCT_ID);
     }
   });
 
@@ -184,20 +192,15 @@ for (const { name, env } of envFiles) {
     const passes = JSON.parse(runCLI(['passes'], env).stdout);
     const pass = passes.find(p => env[`HTM_BIRTHDATE_${p.id}`]);
     if (!pass) return t.skip('no HTM_BIRTHDATE_<tokenId> set for any pass');
-    let orderLineId;
     try {
-      const { stdout, stderr, status } = runCLI(['reorder', String(pass.id), String(AGE_BASED_PRODUCT_ID), daysFromNow(20)], env);
+      const { stderr, status } = runCLI(['reorder', String(pass.id), String(AGE_BASED_PRODUCT_ID), daysFromNow(20)], env);
       assert.equal(status, 0, stderr);
-      orderLineId = JSON.parse(stdout).orderLineId;
 
       const withoutBirthdate = runCLI(['reorder', String(pass.id), String(AGE_BASED_PRODUCT_ID), daysFromNow(20)],
         { ...env, [`HTM_BIRTHDATE_${pass.id}`]: '' });
       assert.equal(withoutBirthdate.status, 0, 'A birthdate already on the line should not be asked for again');
     } finally {
-      if (orderLineId) {
-        const session = await login(env.HTM_LOGIN, env.HTM_PASSWORD);
-        await cancelOrderline(session, orderLineId).catch(() => {});
-      }
+      await removeLines(env, pass.id, AGE_BASED_PRODUCT_ID);
     }
   });
 }

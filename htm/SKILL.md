@@ -23,11 +23,13 @@ the Rotterdam ones. `age` picks the price tier: `Adult` (default), `Senior`, `Te
 `Child`. Several comma-separated `tokenId`s (e.g. the whole family) give one result per pass, in
 order.
 
-`reorder` puts a product (an `id` from `products` or `regio-advies`, e.g. `5` = HTM 20% Korting) in
-the HTM cart for that pass. It never pays: the user finishes checkout in a browser at the
-`checkoutUrl` it prints. `totalAmount` is the whole cart's. `validFrom` can be at most ~30 days
-ahead; without it a new cart line starts today. Re-running for the same pass and product updates
-that line instead of adding another; lines for other passes are left alone.
+`reorder` puts a product in the HTM cart for that pass: an `id` from `products`, a region's
+`productId` from `regio-advies` (its own `id` can't be ordered), or e.g. `163` = HTM 20% Korting
+Maand. It never pays: the user finishes checkout in a browser at the `checkoutUrl` it prints.
+`totalAmount` is the whole cart's. `validFrom` can be at most ~30 days ahead; without it a new cart
+line starts today. Re-running for the same pass and product updates that line instead of adding
+another; lines for other passes are left alone.
 
-Age-based products (e.g. Regio Vrij "Reductie") need the pass owner's birthdate on every order: set
-`HTM_BIRTHDATE_<tokenId>=YYYY-MM-DD`, or `reorder` fails and names the variable.
+Age-based products (e.g. a Regio Vrij region's Child/Teenager price) need the pass owner's
+birthdate on every order: set `HTM_BIRTHDATE_<tokenId>=YYYY-MM-DD`, or `reorder` fails and names
+the variable.
